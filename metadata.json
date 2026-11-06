@@ -1,0 +1,6 @@
+{
+  "name": "SEVAK — Voice-First Indian Document Assistant",
+  "description": "Voice-First Indian Document Assistant that explains confusing legal notices, bank letters, and government documents in simple language (Hindi, Hinglish, English, Bhojpuri, Maithili) with speech support.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
