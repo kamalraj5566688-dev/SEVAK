@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   SevakAnalysisResult,
   SupportedLanguage,
@@ -45,24 +45,23 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
   >([]);
   const [isAsking, setIsAsking] = useState(false);
 
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
   // Stop any audio when unmounting
   useEffect(() => {
     return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
       if (window.speechSynthesis) {
         window.speechSynthesis.cancel();
       }
     };
   }, []);
 
-  const handleToggleVoice = () => {
+  const playBrowserSpeech = () => {
     if (!('speechSynthesis' in window)) {
       alert('Speech synthesis is not supported on this device/browser.');
-      return;
-    }
-
-    if (isPlayingAudio) {
-      window.speechSynthesis.cancel();
-      setIsPlayingAudio(false);
       return;
     }
 
@@ -83,6 +82,43 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
     utterance.onerror = () => setIsPlayingAudio(false);
 
     window.speechSynthesis.speak(utterance);
+  };
+
+  const handleToggleVoice = () => {
+    if (isPlayingAudio) {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+      setIsPlayingAudio(false);
+      return;
+    }
+
+    // 1. Prefer real Gnani Timbre neural audio if available
+    if (result.audioBase64) {
+      try {
+        if (!audioRef.current) {
+          audioRef.current = new Audio();
+        }
+        audioRef.current.src = `data:audio/wav;base64,${result.audioBase64}`;
+        audioRef.current.onplay = () => setIsPlayingAudio(true);
+        audioRef.current.onended = () => setIsPlayingAudio(false);
+        audioRef.current.onerror = () => {
+          setIsPlayingAudio(false);
+          playBrowserSpeech();
+        };
+        audioRef.current.play();
+        return;
+      } catch (err) {
+        console.warn('Direct Timbre playback failed, falling back to speech synthesis:', err);
+      }
+    }
+
+    // 2. Fall back to browser Web Speech API
+    playBrowserSpeech();
   };
 
   const handleAskQuestion = async (e?: React.FormEvent) => {
@@ -188,7 +224,7 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
               <span>•</span>
               <span>Size: {result.fileSize}</span>
               <span>•</span>
-              <span>Confidence: {result.confidenceScore}%</span>
+              <span>Confidence: {(result.confidenceScore > 1 ? result.confidenceScore : Math.round(result.confidenceScore * 100))}%</span>
             </div>
           </div>
 
@@ -395,6 +431,42 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
             </div>
           )}
         </div>
+
+        {/* 6. CITATIONS — Show Me Where Grounding */}
+        {result.citations && result.citations.length > 0 && (
+          <div className="md:col-span-12 bg-white rounded-3xl border border-slate-200/90 shadow-sm p-6 sm:p-7">
+            <div className="flex items-center gap-2.5 mb-4 text-[#0B57D0]">
+              <div className="w-8 h-8 rounded-xl bg-blue-50 flex items-center justify-center">
+                <FileText className="w-5 h-5 text-[#0B57D0]" />
+              </div>
+              <div>
+                <h2 className="text-sm font-extrabold tracking-wider uppercase font-display text-[#082C5A]">
+                  SHOW ME WHERE — Verified Document Grounding
+                </h2>
+                <span className="text-[11px] text-slate-500 font-medium">
+                  Every claim is mapped to the exact page and paragraph in your notice
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+              {result.citations.map((cite, idx) => (
+                <div
+                  key={idx}
+                  className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 flex flex-col justify-between"
+                >
+                  <p className="text-xs sm:text-sm font-medium text-slate-800 mb-2.5">
+                    "{cite.claim}"
+                  </p>
+                  <div className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#0B57D0] bg-blue-50 px-2.5 py-1 rounded-full w-fit">
+                    <ExternalLink className="w-3 h-3" />
+                    <span>Verified Source: {cite.sourceLocation}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Interactive Follow-up Question Bar with SEVAK */}

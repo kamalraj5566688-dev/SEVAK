@@ -28,6 +28,9 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
 
+  // Ref to hold the latest transcript without relying on stale closure in onend.
+  const transcriptRef = useRef('');
+
   useEffect(() => {
     if (!isOpen) {
       stopListening();
@@ -91,6 +94,7 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
           current += event.results[i][0].transcript;
         }
         setTranscript(current);
+        transcriptRef.current = current;
       };
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -108,12 +112,15 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
 
       recognition.onend = () => {
         setIsListening(false);
-        if (transcript.trim().length > 2) {
-          handleProcessQuestion(transcript);
+        // Read transcript from a ref to avoid stale closure on the state variable.
+        const finalTranscript = transcriptRef.current.trim();
+        if (finalTranscript.length > 2) {
+          handleProcessQuestion(finalTranscript);
         }
       };
 
       recognitionRef.current = recognition;
+      transcriptRef.current = '';
       recognition.start();
     } catch (err) {
       console.error('Failed to start speech recognition:', err);

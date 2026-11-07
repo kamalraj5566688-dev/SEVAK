@@ -9,15 +9,21 @@ export interface NextStepItem {
   actionUrl?: string;
 }
 
+export interface CitationItem {
+  claim: string;
+  sourceLocation: string;
+}
+
 export interface SevakAnalysisResult {
   id: string;
   documentTitle: string;
-  category: 'Traffic Police Notice' | 'Banking & KYC' | 'Income Tax Department' | 'Government Notice' | 'Legal Summons';
+  category: 'Traffic Police Notice' | 'Banking & KYC' | 'Income Tax Department' | 'Government Notice' | 'Legal Summons' | 'Unrecognized / Not a Document';
   originalFileName: string;
   fileSize: string;
   fileType: string;
   uploadDate: string;
   confidenceScore: number;
+  classificationConfidence: number;
   isDemoFallback?: boolean;
 
   // Key SEVAK Response Structure
@@ -51,6 +57,8 @@ export interface SevakAnalysisResult {
 
   // Multi-lingual voice audio transcriptions
   voiceSummaries: Record<SupportedLanguage, string>;
+  audioBase64?: string;
+  citations?: CitationItem[];
 }
 
 export interface VoiceState {

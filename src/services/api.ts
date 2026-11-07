@@ -14,6 +14,27 @@ export interface VoiceRespondPayload {
   language: SupportedLanguage;
 }
 
+/**
+ * Converts snake_case object keys to camelCase recursively.
+ * The FastAPI backend returns snake_case keys; the frontend TypeScript type
+ * and components expect camelCase. Without this transformation, every
+ * backend-sourced field would be undefined at runtime.
+ */
+function snakeToCamel(obj: any): any {
+  if (Array.isArray(obj)) {
+    return obj.map(snakeToCamel);
+  }
+  if (obj !== null && typeof obj === 'object') {
+    const result: any = {};
+    for (const [key, value] of Object.entries(obj)) {
+      const camelKey = key.replace(/[_](.)/g, (_, char) => char.toUpperCase());
+      result[camelKey] = snakeToCamel(value);
+    }
+    return result;
+  }
+  return obj;
+}
+
 export class SevakApiService {
   private static async checkBackendHealth(): Promise<boolean> {
     try {
@@ -49,10 +70,12 @@ export class SevakApiService {
         }
 
         const data = await response.json();
+        const camelData = snakeToCamel(data) as Partial<SevakAnalysisResult>;
+        // Preserve the backend's demo-fallback flag instead of overwriting it.
         return {
-          ...data,
-          isDemoFallback: false,
-        };
+          ...camelData,
+          isDemoFallback: camelData.isDemoFallback ?? false,
+        } as SevakAnalysisResult;
       } catch (err) {
         console.warn('Real backend call failed, falling back to safe local demo parser:', err);
       }

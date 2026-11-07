@@ -407,9 +407,14 @@ For major changes, discuss the proposed change with the project team before maki
 
 ---
 
-## 📄 License
+## 📄 License & Copyright
 
-This project is currently developed for educational, hackathon, and internship-challenge purposes.
+This project is licensed under the [MIT License](LICENSE).
+
+```text
+Copyright (c) 2026 SEVAK Team (kamalraj5566688-dev & Contributors)
+All Rights Reserved. Developed for the Great Indian AI Internship Challenge (Gnani AI).
+```
 
 ---
 
