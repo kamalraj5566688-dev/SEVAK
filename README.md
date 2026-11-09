@@ -16,7 +16,7 @@
 [![Challenge](https://img.shields.io/badge/Great%20Indian%20AI%20Internship-Submission%20Ready-082C5A?style=for-the-badge)](#-great-indian-ai-internship-challenge)
 [![Demo Video: 55s Intro](https://img.shields.io/badge/Demo%20Video-Watch%2055s-FF5722?style=for-the-badge&logo=playstation&logoColor=white)](public/assets/video/brag.mp4)
 
-[Key Features](#-key-features) • [Demo Video](#-55-second-intro-video) • [The Problem](#-the-problem-fear-in-the-mailbox) • [Explainability Pipeline](#-the-6-pillar-explainability-pipeline) • [Architecture](#-sovereign-indic-architecture) • [Security & Privacy](#-security--zero-exposure-credential-architecture) • [Quickstart](#-quickstart)
+[About](#-about-sevak) • [Demo Video](#-55-second-intro-video) • [Key Features](#-key-features) • [The Problem](#-the-problem-fear-in-the-mailbox) • [Explainability Pipeline](#-the-6-pillar-explainability-pipeline) • [Architecture](#-sovereign-indic-architecture) • [Security & Privacy](#-security--zero-exposure-credential-architecture) • [Development Team](#-development-team) • [Quickstart](#-quickstart)
 
 </div>
 
@@ -41,6 +41,35 @@
 | **0:46** | **Team Credits** | **Divyanshu Raj** (AI/ML & Frontend) • **Kamal** (Backend & Infrastructure) |
 
 </div>
+
+---
+
+## 📖 About SEVAK
+
+> **"Samjhega. Batayega. Raasta dikhayega."**  
+> *(Understands. Explains. Guides the way.)*
+
+**SEVAK** is India's sovereign, voice-first AI assistant built to decode confusing, high-stress legal notices, court summons, tax demands, and bank letters for everyday citizens.
+
+Over **4.2 Crore official notices and summons** are served across India every year. Almost all are drafted in archaic, intimidating colonial-era English legalese—loaded with statutory citations (Section 148, SARFAESI 13(2), NI Act 138), hidden deadlines, and veiled threat language. For 90%+ of Indian citizens, receiving such a document triggers visceral panic:
+
+- *Am I going to jail?*
+- *Is my bank account frozen?*
+- *How much do I actually owe, and by what deadline?*
+- *What is my immediate, concrete next step?*
+
+Because citizens lack an accessible, non-threatening bridge to understand these papers, they often pay **₹5,000–₹15,000 in predatory advocate panic fees** just to have someone read the notice—or worse, ignore it out of fear until compounding penalties or warrants are issued.
+
+**SEVAK** bridges this divide through five core pillars:
+
+1. 🎙️ **Voice-First Indic Interaction:** Ingests notices via camera or PDF and provides spoken explanations in **Hinglish, Hindi, Bhojpuri, Maithili, and English** powered by **Gnani Prisma STT** and **Timbre TTS**.
+2. 🧠 **Sovereign Legal Reasoning:** Powered by **Gnani Evon-30B**, few-shot calibrated on Indian procedural laws, tax rules, and statutory timelines.
+3. ⚖️ **Instant Severity Triage:** High-visibility **Green / Yellow / Red** alert badges with statutory countdown timers and penalty warnings.
+4. ✅ **Exactly 3 Next Steps:** A prioritized, jargon-free roadmap of immediate actions.
+5. 📌 **100% Grounded Citations ("Show Me Where"):** Zero hallucination—every single statement links directly to `Page X, Paragraph Y` in the scanned notice.
+6. 🛡️ **Ephemeral Privacy Shield:** Strictly in-memory processing. Documents and voice recordings are never permanently stored, monetized, or retained.
+
+👉 *For the complete origin story, design philosophy, and ethical framework, read [ABOUT.md](ABOUT.md).*
 
 ---
 
