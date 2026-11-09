@@ -16,6 +16,20 @@ app = FastAPI(
     description="SEVAK - Smart Explanation & Voice-Assisted Kanoon backend",
 )
 
+# CORS: allow the Vite React frontend during local development.
+# Production deployment should use the deployed frontend origin instead.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
 # CORS: allow the frontend dev origins (Vite on 3000/5173).
 app.add_middleware(
     CORSMiddleware,

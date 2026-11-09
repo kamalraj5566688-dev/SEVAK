@@ -113,58 +113,186 @@ export class SevakApiService {
   /**
    * POST /api/voice/transcribe
    */
+
   static async transcribeAudio(audioBlob: Blob, language: SupportedLanguage): Promise<string> {
     try {
       const formData = new FormData();
-      formData.append('audio', audioBlob);
+
+      const extension = audioBlob.type.includes('webm')
+        ? 'webm'
+        : audioBlob.type.includes('ogg')
+          ? 'ogg'
+          : 'wav';
+
+      formData.append(
+        'audio',
+        audioBlob,
+        `sevak-voice-${Date.now()}.${extension}`
+      );
       formData.append('language', language);
 
-      const response = await fetch(`${API_BASE_URL}/api/voice/transcribe`, {
-        method: 'POST',
-        body: formData,
+      console.log('[SEVAK][STT] Sending audio:', {
+        type: audioBlob.type,
+        size: audioBlob.size,
+        language,
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        return data.transcript || '';
-      }
-    } catch {
-      // ignore
-    }
-    return '';
-  }
+      const response = await fetch(
+        `${API_BASE_URL}/api/voice/transcribe`,
+        {
+          method: 'POST',
+          body: formData,
+        }
+      );
 
-  /**
+      const rawText = await response.text();
+
+      if (!response.ok) {
+        console.error(
+          '[SEVAK][STT] Backend error:',
+          response.status,
+          rawText
+        );
+
+        throw new Error(
+          `Speech transcription failed: ${response.status}`
+        );
+      }
+
+      let data: any = {};
+
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        throw new Error('Invalid STT response from backend');
+      }
+
+      const transcript = (
+        data.transcript ||
+        data.transcription ||
+        data.output?.literal ||
+        ''
+      ).trim();
+
+      console.log('[SEVAK][STT] Transcript:', transcript);
+
+      return transcript;
+    } catch (error) {
+      console.error('[SEVAK][STT] Failed:', error);
+      return '';
+    }
+  }
+/**
    * POST /api/voice/respond & POST /api/ask
    */
+
   static async askQuestion(payload: VoiceRespondPayload): Promise<string> {
+    const question = payload.question.trim();
+
+    if (!question) {
+      return '';
+    }
+
+    // No document: send the real user question to the backend.
+    // Backend handles conversational/general questions and
+    // document-grounded questions when a document is available.
     try {
-      const response = await fetch(`${API_BASE_URL}/api/ask`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+      console.log('[SEVAK][ASK] Sending question:', {
+        question,
+        documentId: payload.documentId,
+        language: payload.language,
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        return data.answer || data.response;
+      const response = await fetch(
+        `${API_BASE_URL}/api/ask`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            question,
+            document_id: payload.documentId,
+            language: payload.language,
+          }),
+        }
+      );
+
+      const rawText = await response.text();
+
+      if (!response.ok) {
+        console.error(
+          '[SEVAK][ASK] Backend error:',
+          response.status,
+          rawText
+        );
+
+        throw new Error(
+          `Question request failed: ${response.status}`
+        );
       }
-    } catch {
-      // fallback
-    }
 
-    // Contextual demo answer based on query
-    const q = payload.question.toLowerCase();
-    if (q.includes('deadline') || q.includes('kab tak') || q.includes('last date') || q.includes('tarikh')) {
-      return 'Notice ke anusar iska antargat action lene ki antim tithi 21 November 2026 hai. Uske pehle dispute ya payment clear karein.';
-    }
-    if (q.includes('jail') || q.includes('police') || q.includes('arrest') || q.includes('court')) {
-      return 'Ghabraye nahi! Yeh shuruati administrative notice hai. Isme seedhe arrest ya impound nahi hota. Sabse pehle apna reply portal par darj karein.';
-    }
-    if (q.includes('paise') || q.includes('fine') || q.includes('kitna') || q.includes('amount')) {
-      return 'Document ke anusaar prescribed amount Rs. 2,000 dikh raha hai. Official Parivahan/Bank portal par exact challan ID dalkar verify kar sakte hain.';
-    }
+      let data: any = {};
 
-    return 'SEVAK ne aapka prashna suna: Aap is document ka official portal verify karein aur 3 practical steps follow karein.';
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        throw new Error('Invalid answer response from backend');
+      }
+
+      const answer = (
+        data.answer ||
+        data.response ||
+        data.message ||
+        ''
+      ).trim();
+
+      console.log('[SEVAK][ASK] Answer:', answer);
+
+      if (!answer) {
+        throw new Error('Backend returned an empty answer');
+      }
+
+      return answer;
+    } catch (error) {
+      console.error('[SEVAK][ASK] Failed:', error);
+
+      const q = question.toLowerCase();
+
+      if (
+        q.includes('deadline') ||
+        q.includes('kab tak') ||
+        q.includes('last date') ||
+        q.includes('tarikh')
+      ) {
+        return 'Notice ke anusar deadline document mein di gayi antim tithi ko check karein.';
+      }
+
+      if (
+        q.includes('jail') ||
+        q.includes('police') ||
+        q.includes('arrest') ||
+        q.includes('court')
+      ) {
+        return 'Is question ka exact answer dene ke liye SEVAK ko uploaded document ka context chahiye.';
+      }
+
+      if (
+        q.includes('paise') ||
+        q.includes('fine') ||
+        q.includes('kitna') ||
+        q.includes('amount')
+      ) {
+        return 'Is question ka exact amount document se verify karna zaroori hai.';
+      }
+
+      return `SEVAK ne aapka question suna: "${question}". Lekin backend se document-grounded answer nahi mil saka.`;
+    }
   }
+
 }
+
+
+
+
+

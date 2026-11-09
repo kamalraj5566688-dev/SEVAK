@@ -7,6 +7,7 @@ of crashing.
 """
 
 import json
+from pathlib import Path
 from typing import Any, List, Union
 
 from pydantic import field_validator
@@ -19,7 +20,7 @@ class Settings(BaseSettings):
 
     # Gnani AI credentials
     GNANI_API_KEY: str = ""
-    GNANI_PRISMA_ENDPOINT: str = "https://api.gnani.ai/v1/stt"
+    GNANI_PRISMA_ENDPOINT: str = "https://api.vachana.ai/stt/v3"
     GNANI_TIMBRE_ENDPOINT: str = "https://api.gnani.ai/v1/tts"
 
     # Hugging Face Dedicated Inference Endpoint or Serverless Model ID (Evon 30B)
@@ -51,7 +52,7 @@ class Settings(BaseSettings):
         return ["http://localhost:3000", "http://localhost:5173"]
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=Path(__file__).resolve().parents[2] / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -68,3 +69,5 @@ def is_gnani_configured() -> bool:
 def is_evon_configured() -> bool:
     """Return True when Hugging Face Evon credentials (token and endpoint or model ID) are present."""
     return bool(settings.HF_TOKEN and (settings.HF_EVON_ENDPOINT or settings.HF_MODEL_ID))
+
+
