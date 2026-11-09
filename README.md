@@ -14,30 +14,31 @@
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org)
 [![Gnani AI](https://img.shields.io/badge/Powered%20by-Gnani%20AI-F47318?style=for-the-badge)](https://gnani.ai)
 [![Challenge](https://img.shields.io/badge/Great%20Indian%20AI%20Internship-Submission%20Ready-082C5A?style=for-the-badge)](#-great-indian-ai-internship-challenge)
-[![Demo Video: 40s Intro](https://img.shields.io/badge/Demo%20Video-Watch%2040s-FF5722?style=for-the-badge&logo=playstation&logoColor=white)](public/assets/video/brag.mp4)
+[![Demo Video: 55s Intro](https://img.shields.io/badge/Demo%20Video-Watch%2055s-FF5722?style=for-the-badge&logo=playstation&logoColor=white)](public/assets/video/brag.mp4)
 
-[Key Features](#-key-features) • [Demo Video](#-40-second-intro-video) • [The Problem](#-the-problem-fear-in-the-mailbox) • [Explainability Pipeline](#-the-6-pillar-explainability-pipeline) • [Architecture](#-sovereign-indic-architecture) • [Security & Privacy](#-security--zero-exposure-credential-architecture) • [Quickstart](#-quickstart)
+[Key Features](#-key-features) • [Demo Video](#-55-second-intro-video) • [The Problem](#-the-problem-fear-in-the-mailbox) • [Explainability Pipeline](#-the-6-pillar-explainability-pipeline) • [Architecture](#-sovereign-indic-architecture) • [Security & Privacy](#-security--zero-exposure-credential-architecture) • [Quickstart](#-quickstart)
 
 </div>
 
 ---
 
-## 🎬 40-Second Intro Video
+## 🎬 55-Second Intro Video
 
 <div align="center">
 
-[![Watch SEVAK 40s Demo Video](public/assets/video/brag.jpg)](public/assets/video/brag.mp4)
+[![Watch SEVAK 55s Demo Video](public/assets/video/brag.jpg)](public/assets/video/brag.mp4)
 
-**▶️ [Click here to watch the 40-Second Demo Video](public/assets/video/brag.mp4)**  
+**▶️ [Click here to watch the 55-Second Demo Video](public/assets/video/brag.mp4)**  
 *From Intimidating Legal Notices to Plain Language & Spoken Action Steps in 5 Indian Languages*
 
 | Timestamp | Story Beat | What You See |
 |:---:|---|---|
 | **0:00** | **The Crisis** | 4.2 Crore annual notices, archaic English legalese, and citizen panic |
-| **0:07** | **Meet SEVAK** | Sovereign voice-first assistant with 5 Indic dialects & ephemeral privacy |
-| **0:15** | **Case Study 1** | Delhi Traffic Police E-Challan: 🔴 High Urgency triage & 3 verified steps |
-| **0:24** | **Case Study 2** | SBI Re-KYC Update: 🟡 Medium Urgency & live neural voice synthesis |
-| **0:33** | **The Promise** | Zero jargon. Zero advocate panic fees. 100% private. |
+| **0:08** | **Meet SEVAK** | Sovereign voice-first assistant with 5 Indic dialects & ephemeral privacy |
+| **0:17** | **Case Study 1** | Delhi Traffic Police E-Challan: 🔴 High Urgency triage & 3 verified steps |
+| **0:27** | **Case Study 2** | SBI Re-KYC Update: 🟡 Medium Urgency & live neural voice synthesis |
+| **0:37** | **Explainability** | 4-Pillar framework (What, Why, Next Steps, Rights) & Gnani Indic AI stack |
+| **0:46** | **Team Credits** | **Divyanshu Raj** (AI/ML & Frontend) • **Kamal** (Backend & Infrastructure) |
 
 </div>
 
