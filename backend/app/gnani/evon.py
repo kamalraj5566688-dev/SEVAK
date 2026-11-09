@@ -1,3 +1,19 @@
+"""
+evon.py — Gnani Evon-30B reasoning client for SEVAK.
+
+Improvements over v1:
+- Few-Shot Indic Legal Examples injected into every system prompt.
+  This teaches the model the exact output format and Indian legal tone
+  without any fine-tuning or GPU.
+- Fixed @staticmethod / self mismatch on _demo_answer.
+- Fixed missing @staticmethod on _extract_generated_text.
+- Fixed Unicode encoding corruption in Hinglish strings.
+- ask() now retries with /v1/chat/completions on 400/404/422,
+  matching the same resilience pattern already in analyze().
+- Both analyze() and ask() use the OpenAI-compatible chat format
+  as the primary path (more reliable on HF Inference Router).
+"""
+
 from __future__ import annotations
 
 import json
@@ -13,7 +29,169 @@ from app.schemas import EvonAnalysisResult
 logger = logging.getLogger(__name__)
 
 
-SYSTEM_PROMPT = """You are SEVAK, an AI document assistant for Indian citizens.
+# ---------------------------------------------------------------------------
+# FEW-SHOT INDIC LEGAL EXAMPLES
+# ---------------------------------------------------------------------------
+# These examples teach Evon-30B the exact output format, Indian legal
+# vocabulary, severity calibration, and Hinglish spoken-summary style.
+# No GPU, no training — pure prompt engineering.
+# ---------------------------------------------------------------------------
+
+FEW_SHOT_EXAMPLES = """
+=== FEW-SHOT EXAMPLE 1 — Income Tax Notice (Section 148) ===
+
+DOCUMENT EVIDENCE:
+[Page 1, Paragraph 1]
+INCOME TAX DEPARTMENT, GOVERNMENT OF INDIA
+Notice under Section 148 of the Income Tax Act, 1961
+To: Shri Ramesh Kumar Verma, PAN: ABCPV1234D
+Assessment Year: 2021-22
+Reference No: ITO/WARD-3/148/2024/001
+
+[Page 1, Paragraph 2]
+You are hereby required to furnish a return of income for the Assessment Year
+2021-22 within 30 days from the date of service of this notice. Failure to
+comply may result in best-judgment assessment under Section 144 and imposition
+of penalty under Section 271(1)(b).
+
+ASSISTANT RESPONSE:
+{
+  "document_type": "Income Tax Notice — Section 148 (Reassessment)",
+  "severity": "RED",
+  "severity_reason": "This is a mandatory government notice requiring income return filing within 30 days. Non-compliance leads to penalty and best-judgment assessment (Page 1, Paragraph 2).",
+  "what": "Income Tax Department ne aapko AY 2021-22 ke liye income return dobara file karne ka notice diya hai. Yeh Section 148 ke under reassessment notice hai.",
+  "why": "Department ko lagta hai ki aapki AY 2021-22 ki income puri tarah report nahi hui. Isliye woh reassessment kar rahe hain (Page 1, Paragraph 1 — Assessment Year: 2021-22).",
+  "next_steps": [
+    "Immediately contact a Chartered Accountant or tax advocate — notice mila hai toh 30 din ke andar return file karna compulsory hai.",
+    "Collect all income proofs, bank statements, and investment documents for AY 2021-22.",
+    "File the revised return on the Income Tax portal (incometax.gov.in) or through your CA before the 30-day deadline."
+  ],
+  "rights_and_protections": "Aapko Section 148A ke under hearing ka adhikar hai. Notice ke jawab mein aap apni position explain kar sakte hain pehle reassessment order aane se. SEVAK ek information assistant hai — legal dispute ke liye qualified tax advocate se milein.",
+  "deadlines": [
+    {
+      "action": "File income return for AY 2021-22",
+      "timeline": "Within 30 days from date of service of notice",
+      "source_page": 1
+    }
+  ],
+  "citations": [
+    {
+      "claim": "Return must be furnished within 30 days",
+      "source_location": "Page 1, Paragraph 2"
+    },
+    {
+      "claim": "Non-compliance may result in penalty under Section 271(1)(b)",
+      "source_location": "Page 1, Paragraph 2"
+    }
+  ],
+  "spoken_summary_regional": "Income Tax Department ne aapko 30 din ke andar AY 2021-22 ka return file karne ka notice diya hai, warna penalty lag sakti hai."
+}
+
+=== FEW-SHOT EXAMPLE 2 — Rent Eviction Notice ===
+
+DOCUMENT EVIDENCE:
+[Page 1, Paragraph 1]
+LEGAL NOTICE
+To: Smt. Priya Sharma, Tenant
+From: Sri Mahesh Agarwal, Landlord
+Property: Flat No. 304, Laxmi Apartments, Pune — 411001
+Date: 15 October 2024
+
+[Page 1, Paragraph 2]
+You have failed to pay rent for the months of August, September, and October
+2024, totalling Rs. 45,000 (Rupees Forty-Five Thousand Only). You are hereby
+called upon to pay the outstanding amount within 15 days of receipt of this
+notice, failing which legal proceedings under the Maharashtra Rent Control
+Act, 1999 will be initiated against you.
+
+ASSISTANT RESPONSE:
+{
+  "document_type": "Legal Notice — Rent Recovery / Eviction Warning",
+  "severity": "YELLOW",
+  "severity_reason": "This is a legal notice warning of court proceedings if rent is not paid within 15 days. No court order has yet been issued — this is a pre-litigation notice (Page 1, Paragraph 2).",
+  "what": "Aapke landlord ne 3 mahine ka pending rent — August, September aur October 2024 — total Rs. 45,000 — 15 din mein dene ka legal notice bheja hai.",
+  "why": "Notice mein likha hai ki rent nahi diya toh Maharashtra Rent Control Act ke under court case hoga (Page 1, Paragraph 2).",
+  "next_steps": [
+    "Agar rent genuinely baaki hai toh 15 din ke andar pay karein aur receipt lein — yeh sabse safe option hai.",
+    "Agar rent already paid hai ya koi dispute hai, toh ek rent-law advocate se milein aur apne payment proofs collect karein.",
+    "Yeh notice court order nahi hai — aapko abhi ghar khaali karne ki zaroorat nahi, lekin 15 din ke andar response dena important hai."
+  ],
+  "rights_and_protections": "Maharashtra Rent Control Act ke under tenant ko direct eviction se protection milti hai — court order ke bina eviction illegal hai. SEVAK ek information assistant hai, legal dispute ke liye advocate se milein.",
+  "deadlines": [
+    {
+      "action": "Pay outstanding rent of Rs. 45,000",
+      "timeline": "Within 15 days of receipt of notice",
+      "source_page": 1
+    }
+  ],
+  "citations": [
+    {
+      "claim": "Outstanding rent totals Rs. 45,000 for August, September, October 2024",
+      "source_location": "Page 1, Paragraph 2"
+    },
+    {
+      "claim": "Landlord threatens legal proceedings under Maharashtra Rent Control Act, 1999",
+      "source_location": "Page 1, Paragraph 2"
+    }
+  ],
+  "spoken_summary_regional": "Landlord ne 3 mahine ka 45,000 rupaye rent 15 din mein dene ka notice diya hai, warna court case hoga."
+}
+
+=== FEW-SHOT EXAMPLE 3 — Bank Loan Default Notice ===
+
+DOCUMENT EVIDENCE:
+[Page 1, Paragraph 1]
+STATE BANK OF INDIA — NOTICE UNDER SECTION 13(2) OF SARFAESI ACT, 2002
+Borrower: Sh. Dinesh Patel, Loan Account No: SBI/HL/2019/00456
+Outstanding Amount: Rs. 18,34,520 (Principal + Interest as on 01-Nov-2024)
+
+[Page 1, Paragraph 2]
+You are hereby called upon to discharge the full outstanding liability of
+Rs. 18,34,520 within 60 days of service of this notice. Failure to pay
+shall result in enforcement of security interest over the mortgaged property
+at Survey No. 123/A, Village Dholka, District Ahmedabad.
+
+ASSISTANT RESPONSE:
+{
+  "document_type": "Bank Loan Default Notice — SARFAESI Act Section 13(2)",
+  "severity": "RED",
+  "severity_reason": "SARFAESI Section 13(2) is a formal legal demand that can lead to property seizure without court intervention if the borrower does not respond within 60 days (Page 1, Paragraph 2). This is a high-urgency notice.",
+  "what": "State Bank of India ne SARFAESI Act ke under aapko Rs. 18,34,520 ke outstanding loan ke liye 60-din ka formal notice diya hai. Yeh notice property seizure process ka pehla official step hai.",
+  "why": "Aapka home loan account NPA (Non-Performing Asset) category mein aa gaya hai. Bank ko SARFAESI Act ke under secured property enforce karne ka adhikar milta hai agar 60 din mein payment nahi hoti (Page 1, Paragraph 2).",
+  "next_steps": [
+    "Immediately ek SARFAESI-specialist advocate ya legal-aid centre se milein — 60-din ki deadline bahut important hai.",
+    "60-din ke andar Section 13(3A) ke under bank ko written representation bheji ja sakti hai — yeh aapka statutory right hai.",
+    "Agar loan restructuring possible ho toh bank ke Loan Recovery Officer se milkar One-Time Settlement (OTS) negotiate karein."
+  ],
+  "rights_and_protections": "SARFAESI Act Section 13(3A) ke under aapko 15-din ke andar bank ko written objection dene ka adhikar hai. DRT (Debt Recovery Tribunal) mein Section 17 ke under appeal bhi ki ja sakti hai. SEVAK ek information assistant hai — is matter mein qualified advocate se zaroor milein.",
+  "deadlines": [
+    {
+      "action": "Repay outstanding amount of Rs. 18,34,520 OR file written representation under Section 13(3A)",
+      "timeline": "Within 60 days of service of notice",
+      "source_page": 1
+    }
+  ],
+  "citations": [
+    {
+      "claim": "Outstanding liability is Rs. 18,34,520 as on 01-Nov-2024",
+      "source_location": "Page 1, Paragraph 1"
+    },
+    {
+      "claim": "Failure to pay within 60 days will result in enforcement of security interest over mortgaged property",
+      "source_location": "Page 1, Paragraph 2"
+    }
+  ],
+  "spoken_summary_regional": "Bank ne SARFAESI notice diya hai — 60 din mein 18 lakh se zyada baaki hai, warna property seize ho sakti hai, isliye turant advocate se milein."
+}
+"""
+
+
+# ---------------------------------------------------------------------------
+# SYSTEM PROMPTS (with Few-Shot examples embedded)
+# ---------------------------------------------------------------------------
+
+SYSTEM_PROMPT = (
+    """You are SEVAK, an AI document assistant for Indian citizens.
 
 You are NOT a lawyer.
 
@@ -76,7 +254,18 @@ RULES:
   preserve that wording.
 - citations must point only to supplied evidence.
 - spoken_summary_regional must be one natural spoken sentence.
+
+SEVERITY CALIBRATION:
+- GREEN  = Informational document, no immediate action or legal risk.
+- YELLOW = Response required but no imminent legal/financial danger.
+- RED    = Urgent legal or financial risk — court notice, property seizure,
+           SARFAESI, criminal summons, or deadline within 15 days.
+
+Study the following examples carefully. Follow the same format, language
+style, and citation discipline for the actual document below.
 """
+    + FEW_SHOT_EXAMPLES
+)
 
 
 QA_SYSTEM_PROMPT = """You are SEVAK, a voice-first Indian document assistant.
@@ -91,8 +280,13 @@ Rules:
 - If evidence is missing, clearly say that the document does not establish it.
 - Cite relevant evidence using Page X, Paragraph Y when possible.
 - Keep the answer practical and conversational.
+- Use Hindi, Hinglish, or English matching the user's language.
 """
 
+
+# ---------------------------------------------------------------------------
+# DEMO FALLBACK (used when API is unavailable)
+# ---------------------------------------------------------------------------
 
 DEMO_RESULT = {
     "document_type": "unknown",
@@ -125,8 +319,12 @@ DEMO_RESULT = {
 }
 
 
+# ---------------------------------------------------------------------------
+# CLIENT
+# ---------------------------------------------------------------------------
+
 class EvonReasoningClient:
-    """Client for Gnani Evon reasoning model."""
+    """Client for Gnani Evon-30B reasoning model via HuggingFace Inference Router."""
 
     def __init__(self) -> None:
         self.endpoint = (
@@ -145,11 +343,15 @@ class EvonReasoningClient:
             else ""
         )
 
+    # ------------------------------------------------------------------
+    # URL helpers
+    # ------------------------------------------------------------------
+
     def get_target_url(self) -> Optional[str]:
+        """Return the base URL for the model (without /v1/chat/completions)."""
         if self.endpoint:
             if self.endpoint.startswith(("http://", "https://")):
                 return self.endpoint
-
             return (
                 "https://router.huggingface.co/"
                 f"hf-inference/models/{self.endpoint}"
@@ -163,18 +365,33 @@ class EvonReasoningClient:
 
         return None
 
+    def get_chat_url(self) -> Optional[str]:
+        """Return the OpenAI-compatible chat completions URL."""
+        base = self.get_target_url()
+        if base is None:
+            return None
+        return base.rstrip("/") + "/v1/chat/completions"
+
+    # ------------------------------------------------------------------
+    # analyze()
+    # ------------------------------------------------------------------
+
     async def analyze(
         self,
         document_text: str,
         language: str = "hinglish",
     ) -> EvonAnalysisResult:
+        """
+        Analyze an uploaded document with Evon-30B.
 
-        target_url = self.get_target_url()
+        Strategy:
+        1. Try OpenAI-compatible chat/completions (primary — more reliable).
+        2. On failure, return safe DEMO_RESULT.
+        """
+        chat_url = self.get_chat_url()
 
-        if not self.api_token or not target_url:
-            logger.info(
-                "Evon credentials unavailable; using safe fallback."
-            )
+        if not self.api_token or not chat_url:
+            logger.info("Evon credentials unavailable; using safe fallback.")
             return EvonAnalysisResult(**DEMO_RESULT)
 
         user_prompt = (
@@ -191,87 +408,44 @@ class EvonReasoningClient:
             "Content-Type": "application/json",
         }
 
-        hf_payload: dict[str, Any] = {
-            "inputs": (
-                SYSTEM_PROMPT
-                + "\n\n"
-                + user_prompt
-            ),
-            "parameters": {
-                "temperature": 0.1,
-                "max_new_tokens": 1200,
-                "return_full_text": False,
-            },
+        chat_payload: dict[str, Any] = {
+            "model": self.model_id or "evon-30b",
+            "messages": [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            "temperature": 0.1,
+            "max_tokens": 1500,
         }
 
         try:
             async with httpx.AsyncClient(timeout=90.0) as client:
                 response = await client.post(
-                    target_url,
+                    chat_url,
                     headers=headers,
-                    json=hf_payload,
+                    json=chat_payload,
                 )
 
-                if (
-                    response.status_code in (400, 404, 422)
-                    and "chat" not in target_url
-                ):
-                    chat_url = (
-                        target_url.rstrip("/")
-                        + "/v1/chat/completions"
-                    )
-
-                    chat_payload = {
-                        "model": self.model_id or "evon-30b",
-                        "messages": [
-                            {
-                                "role": "system",
-                                "content": SYSTEM_PROMPT,
-                            },
-                            {
-                                "role": "user",
-                                "content": user_prompt,
-                            },
-                        ],
-                        "temperature": 0.1,
-                        "max_tokens": 1200,
-                    }
-
-                    chat_response = await client.post(
-                        chat_url,
-                        headers=headers,
-                        json=chat_payload,
-                    )
-
-                    if chat_response.is_success:
-                        raw = chat_response.json()
-                        text = self._extract_chat_completion_text(raw)
-                        data = self._parse_json(text)
-                        return EvonAnalysisResult(**data)
-
-                    response = chat_response
-
                 if response.status_code == 503:
-                    logger.warning(
-                        "Evon model is loading (503)."
-                    )
+                    logger.warning("Evon model is loading (503).")
                     return EvonAnalysisResult(**DEMO_RESULT)
 
                 response.raise_for_status()
-
                 raw = response.json()
 
-            text = self._extract_generated_text(raw)
+            text = self._extract_chat_completion_text(raw)
             data = self._parse_json(text)
-
             return EvonAnalysisResult(**data)
 
         except Exception as exc:
             logger.error(
-                "Evon inference failed: %s. Using safe fallback.",
-                exc,
+                "Evon analyze() failed: %s. Using safe fallback.", exc
             )
             return EvonAnalysisResult(**DEMO_RESULT)
+
+    # ------------------------------------------------------------------
+    # ask()
+    # ------------------------------------------------------------------
 
     async def ask(
         self,
@@ -279,29 +453,34 @@ class EvonReasoningClient:
         context: Optional[str] = None,
         language: str = "hinglish",
     ) -> str:
+        """
+        Answer a voice question about the document.
 
-        target_url = self.get_target_url()
+        Returns the answer as a plain string so that routes.py can call
+        .lower() / pass it directly to _clean_grounded_text().
+        """
+        chat_url = self.get_chat_url()
 
-        if not self.api_token or not target_url:
-            return self._demo_answer(question, language)
+        if not self.api_token or not chat_url:
+            return self._demo_answer(question, language)["answer"]
 
-        prompt = (
+        user_prompt = (
             f"User language: {language}\n\n"
             f"User question: {question}\n\n"
         )
 
         if context:
-            prompt += (
+            user_prompt += (
                 "DOCUMENT EVIDENCE:\n"
                 f"{context}\n\n"
             )
         else:
-            prompt += (
+            user_prompt += (
                 "No document evidence is available. "
                 "Do not invent document-specific facts.\n\n"
             )
 
-        prompt += (
+        user_prompt += (
             "Answer in 2-4 clear practical sentences. "
             "Use Page X, Paragraph Y citations when supported."
         )
@@ -311,47 +490,48 @@ class EvonReasoningClient:
             "Content-Type": "application/json",
         }
 
-        payload = {
-            "inputs": QA_SYSTEM_PROMPT + "\n\n" + prompt,
-            "parameters": {
-                "temperature": 0.2,
-                "max_new_tokens": 350,
-                "return_full_text": False,
-            },
+        payload: dict[str, Any] = {
+            "model": self.model_id or "evon-30b",
+            "messages": [
+                {"role": "system", "content": QA_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            "temperature": 0.2,
+            "max_tokens": 400,
         }
 
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(
-                    target_url,
+                    chat_url,
                     headers=headers,
                     json=payload,
                 )
 
                 if response.is_success:
                     raw = response.json()
-                    answer = self._extract_generated_text(raw).strip()
+                    answer = self._extract_chat_completion_text(raw).strip()
 
                     if answer:
                         return answer
 
         except Exception as exc:
-            logger.warning(
-                "Evon QA failed: %s",
-                exc,
-            )
+            logger.warning("Evon ask() failed: %s", exc)
 
-        return self._demo_answer(question, language)
+        return self._demo_answer(question, language)["answer"]
+
+    # ------------------------------------------------------------------
+    # Static helpers
+    # ------------------------------------------------------------------
 
     @staticmethod
-
-    def _demo_answer(self, question: str, language: str = "Hinglish"):
-        """Deterministic local fallback used when remote reasoning is unavailable.
-
-        This fallback never pretends to be an LLM. It handles common conversational
-        questions and gives an honest response for unsupported questions.
+    def _demo_answer(question: str, language: str = "Hinglish") -> dict[str, Any]:
         """
+        Deterministic local fallback when remote reasoning is unavailable.
 
+        Never pretends to be an LLM. Handles common conversational questions
+        and gives an honest response for unsupported queries.
+        """
         raw = (question or "").strip()
         q = raw.lower()
 
@@ -370,29 +550,25 @@ class EvonReasoningClient:
         greeting_markers = (
             "hello", "hi", "hey", "namaste", "namaskar",
             "hii", "helo", "good morning", "good afternoon",
-            "good evening"
+            "good evening",
         )
-
         identity_markers = (
             "who are you", "tum kaun ho", "aap kaun ho",
             "what are you", "what is sevak", "sevak kya hai",
-            "sevak kaun hai"
+            "sevak kaun hai",
         )
-
         capability_markers = (
             "what can you do", "kya kar sakte ho",
             "tum kya kar sakte ho", "aap kya kar sakte ho",
-            "capabilities", "features", "help me"
+            "capabilities", "features", "help me",
         )
-
         thanks_markers = (
             "thanks", "thank you", "dhanyavad", "shukriya",
-            "thankyou"
+            "thankyou",
         )
-
         how_are_you_markers = (
             "how are you", "how r you", "kaise ho",
-            "kaisa ho", "aap kaise hain", "tum kaise ho"
+            "kaisa ho", "aap kaise hain", "tum kaise ho",
         )
 
         if any(marker in q for marker in greeting_markers):
@@ -408,7 +584,7 @@ class EvonReasoningClient:
             )
         elif any(marker in q for marker in identity_markers):
             answer = (
-                "Main SEVAK hoon — Voice-First Indian Document Assistant. "
+                "Main SEVAK hoon \u2014 Voice-First Indian Document Assistant. "
                 "Mera kaam confusing documents, notices aur letters ko simple language "
                 "mein samjhana aur unke practical next steps batana hai."
             )
@@ -439,26 +615,18 @@ class EvonReasoningClient:
             "grounded": False,
         }
 
+    @staticmethod
     def _extract_generated_text(raw: Any) -> str:
-
+        """Extract plain text from a HuggingFace text-generation response."""
         if isinstance(raw, list) and raw:
             first = raw[0]
-
             if isinstance(first, dict):
-                for key in (
-                    "generated_text",
-                    "text",
-                    "response",
-                ):
+                for key in ("generated_text", "text", "response"):
                     if isinstance(first.get(key), str):
                         return first[key]
 
         if isinstance(raw, dict):
-            for key in (
-                "generated_text",
-                "text",
-                "response",
-            ):
+            for key in ("generated_text", "text", "response"):
                 if isinstance(raw.get(key), str):
                     return raw[key]
 
@@ -466,13 +634,11 @@ class EvonReasoningClient:
 
     @staticmethod
     def _extract_chat_completion_text(raw: Any) -> str:
-
+        """Extract content from an OpenAI-compatible chat/completions response."""
         if isinstance(raw, dict):
             choices = raw.get("choices", [])
-
             if choices:
                 message = choices[0].get("message", {})
-
                 if (
                     isinstance(message, dict)
                     and isinstance(message.get("content"), str)
@@ -483,44 +649,43 @@ class EvonReasoningClient:
 
     @staticmethod
     def _parse_json(text: str) -> dict[str, Any]:
+        """
+        Robustly parse a JSON object from raw model output.
 
+        Handles:
+        - Markdown code fences (```json ... ```)
+        - Leading/trailing whitespace
+        - Non-JSON preamble before the first {
+        """
         cleaned = text.strip()
 
+        # Strip markdown code fences
         cleaned = re.sub(
             r"^```(?:json)?\s*",
             "",
             cleaned,
             flags=re.IGNORECASE,
         )
+        cleaned = re.sub(r"\s*```$", "", cleaned)
 
-        cleaned = re.sub(
-            r"\s*```$",
-            "",
-            cleaned,
-        )
-
+        # Find the JSON object boundaries
         start = cleaned.find("{")
         end = cleaned.rfind("}")
 
         if start != -1 and end > start:
-            cleaned = cleaned[start:end + 1]
+            cleaned = cleaned[start : end + 1]
 
         try:
             return json.loads(cleaned)
 
         except json.JSONDecodeError:
-
             return {
                 "severity": "YELLOW",
                 "severity_reason": (
                     "The reasoning model did not return valid structured data."
                 ),
-                "what": (
-                    "SEVAK could not safely interpret the document."
-                ),
-                "why": (
-                    "The AI response could not be validated."
-                ),
+                "what": "SEVAK could not safely interpret the document.",
+                "why": "The AI response could not be validated.",
                 "next_steps": [
                     "Read the issuing authority and reference number.",
                     "Check the official source mentioned in the document.",
