@@ -26,9 +26,11 @@ export const Hero: React.FC<HeroProps> = ({
         aria-hidden="true"
       >
         <img
-          src="/public/assets/images/india_map_watermark.png"
+          src="/assets/images/india_map_watermark.png"
           alt=""
-          className="w-full h-auto object-contain"
+          className="w-full h-auto object-contain max-w-full"
+          loading="lazy"
+          decoding="async"
         />
       </div>
 

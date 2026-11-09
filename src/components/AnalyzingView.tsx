@@ -56,9 +56,11 @@ export const AnalyzingView: React.FC<AnalyzingViewProps> = ({
         {/* Robot Avatar Mini Card */}
         <div className="relative z-10 w-28 h-28 sm:w-32 sm:h-32 rounded-3xl bg-white border-2 border-amber-300 shadow-xl p-3 flex flex-col items-center justify-center overflow-hidden">
           <img
-            src="/public/assets/images/hero_robot_final.png"
+            src="/assets/images/hero_robot_final.png"
             alt="SEVAK"
-            className="w-full h-full object-contain scale-125 translate-x-3 -translate-y-1"
+            className="w-full h-full object-contain scale-125 translate-x-3 -translate-y-1 max-w-full"
+            loading="lazy"
+            decoding="async"
           />
 
           {/* Scanner laser beam scanning down */}

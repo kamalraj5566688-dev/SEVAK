@@ -9,6 +9,7 @@ import { VoiceModal } from './components/VoiceModal';
 import { UploadModal } from './components/UploadModal';
 import { AnalyzingView } from './components/AnalyzingView';
 import { ResultsView } from './components/ResultsView';
+import { CookieConsent } from './components/CookieConsent';
 import {
   AppView,
   SupportedLanguage,
@@ -143,6 +144,9 @@ export default function App() {
 
       {/* Footer */}
       <Footer />
+
+      {/* Cookie consent banner */}
+      <CookieConsent />
 
       {/* Interactive Modals */}
       <VoiceModal

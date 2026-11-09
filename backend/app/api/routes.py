@@ -39,6 +39,7 @@ from app.ingestion.pdf_parser import extract_pdf_chunks
 from app.ingestion.ocr import compose_document_text as ocr_compose
 from app.schemas import (
     Category,
+    CitationItem,
     DeadlineBlock,
     EvonAnalysisResult,
     NextStepItem,
@@ -93,25 +94,84 @@ def _format_size(size_bytes: int) -> str:
     return f"{kb:.0f} KB" if kb >= 1 else f"{size_bytes} bytes"
 
 
-def _detect_category(text: str) -> tuple[Category, float]:
-    """Detect category from grounded OCR text with a confidence score.
+def _detect_category(text: str, model_doc_type: Optional[str] = None) -> tuple[Category, float]:
+    """Detect category from grounded text and optional Evon model output.
 
-    Keyword matching runs against the actual extracted document text (not the
-    model's free-text prose), so classification is grounded in evidence.
-    Specific keywords are checked before generic ones to resolve overlaps.
-    Returns (category, confidence) where confidence is 1.0 on a keyword match
-    and 0.5 for the Government Notice default.
+    Specific legal keywords are checked first with comprehensive coverage of
+    Indian notice formats. Returns (category, confidence).
     """
     lowered = text.lower()
-    if any(k in lowered for k in ["challan", "over-speeding", "overspeeding", "red-light", "traffic police", "motor vehicle", "rc ", "registration certificate"]):
+
+    # 1. Traffic Police / Motor Vehicle Notices
+    traffic_keywords = [
+        "challan", "e-challan", "echallan", "over-speeding", "overspeeding",
+        "red-light", "red light", "traffic police", "motor vehicle",
+        "motor vehicles act", "rc ", "registration certificate",
+        "driving license", "driving licence", "dl no", "helmet",
+        "speed limit", "puc ", "parivahan", "mparivahan",
+    ]
+    if any(k in lowered for k in traffic_keywords):
         return "Traffic Police Notice", 1.0
-    if any(k in lowered for k in ["re-kyc", "kyc", "sbi", "hdfc", "upi", "aadhaar", "pan", "bank account"]):
-        return "Banking & KYC", 1.0
-    if any(k in lowered for k in ["income tax", "itd", "assessment", "nefac", "142(", "taxpayer"]):
+
+    # 2. Income Tax Department Notices
+    itd_keywords = [
+        "income tax", "income-tax", "incometax", "itd", "assessment year",
+        "ay 20", "ay 19", "section 148", "section 143", "section 142",
+        "section 139", "section 156", "section 271", "nefac",
+        "faceless assessment", "cbdt", "central board of direct taxes",
+        "pan card", "form 16", "itr-", "taxpayer", "142(1)", "148a",
+    ]
+    if any(k in lowered for k in itd_keywords):
         return "Income Tax Department", 1.0
-    if any(k in lowered for k in ["court", "summons", "section 138", "ni act", "negotiable instruments", "legal notice"]):
+
+    # 3. Court Summons & Formal Legal Notices
+    legal_keywords = [
+        "court", "summons", "warrant", "bailable", "non-bailable",
+        "section 138", "ni act", "negotiable instruments", "legal notice",
+        "advocate", "high court", "district court", "session court",
+        "civil judge", "chief judicial magistrate", "cjm", "tribunal",
+        "drt", "nclt", "plaintiff", "defendant", "petitioner", "respondent",
+        "vakalatnama", "in the court of", "police station", "fir no",
+        "crpc", "ipc", "bns", "bnss", "cheque bounce",
+    ]
+    if any(k in lowered for k in legal_keywords):
         return "Legal Summons", 1.0
-    return "Government Notice", 0.5
+
+    # 4. Banking, Loans, and KYC
+    banking_keywords = [
+        "re-kyc", "kyc", "sbi", "hdfc", "icici", "pnb", "bank of baroda",
+        "axis bank", "canara", "bank", "banking", "loan", "borrower",
+        "home loan", "personal loan", "emi", "default", "npa",
+        "non-performing asset", "sarfaesi", "section 13(2)", "section 13(4)",
+        "debt recovery", "credit card", "upi", "bank account",
+        "savings account", "overdue balance", "credit limit",
+    ]
+    if any(k in lowered for k in banking_keywords):
+        return "Banking & KYC", 1.0
+
+    # 5. Government Notice (Specific departmental markers)
+    govt_keywords = [
+        "municipal", "gram panchayat", "nagar nigam", "electricity bill",
+        "water bill", "discom", "property tax", "ration card", "uidai",
+        "pradhan mantri", "pm-kisan", "epfo", "provident fund", "gazette",
+        "tehsildar", "collectorate", "sub-divisional magistrate", "sdm",
+    ]
+    if any(k in lowered for k in govt_keywords):
+        return "Government Notice", 0.95
+
+    # 6. Corroborate with Evon's detected document_type if available
+    if model_doc_type:
+        md = model_doc_type.lower()
+        if any(k in md for k in ["traffic", "challan", "vehicle", "speed"]):
+            return "Traffic Police Notice", 0.9
+        if any(k in md for k in ["tax", "itd", "assessment", "reassessment"]):
+            return "Income Tax Department", 0.9
+        if any(k in md for k in ["court", "summons", "litigation", "eviction", "legal"]):
+            return "Legal Summons", 0.9
+        if any(k in md for k in ["bank", "kyc", "loan", "sarfaesi", "default"]):
+            return "Banking & KYC", 0.9
+
+    return "Government Notice", 0.60
 
 
 def _split_title_description(text: str) -> tuple[str, str]:
@@ -121,6 +181,35 @@ def _split_title_description(text: str) -> tuple[str, str]:
     if len(match) == 2:
         return match[0].strip(), match[1].strip()
     return text, ""
+
+
+def _extract_reference_number(text: str) -> Optional[str]:
+    """Extract a real reference number, challan ID, PAN, or account number."""
+    patterns = [
+        r"(?:Challan|Notice|Ref|Reference|PAN|Loan\s+A\/c|Case)\s*(?:No\.?|Number)?\s*[:\-]\s*([A-Za-z0-9./_\-]+)",
+        r"\b([A-Z]{4,5}[0-9]{4}[A-Z])\b",  # Indian PAN format
+        r"\b([A-Z]{2}[0-9]{1,2}[A-Z]{0,2}[0-9]{4})\b",  # Vehicle Reg / Challan format
+        r"(?:Memo\s+No|Order\s+No)\s*[:\-]\s*([A-Za-z0-9./_\-]+)",
+    ]
+    for pattern in patterns:
+        m = re.search(pattern, text, re.IGNORECASE)
+        if m:
+            val = m.group(1).strip()
+            if len(val) >= 4:
+                return val
+    return None
+
+
+def _get_official_portal_url(category: Category) -> Optional[str]:
+    """Provide verified official portals for immediate citizen action."""
+    portals = {
+        "Traffic Police Notice": "https://echallan.parivahan.gov.in",
+        "Income Tax Department": "https://eportal.incometax.gov.in",
+        "Banking & KYC": "https://cms.rbi.org.in",
+        "Legal Summons": "https://services.ecourts.gov.in",
+        "Government Notice": "https://pgportal.gov.in",
+    }
+    return portals.get(category)
 
 
 def _map_evon_to_response(
@@ -136,21 +225,39 @@ def _map_evon_to_response(
     category: Category,
     audio_base64: Optional[str],
     demo_fallback: bool,
+    document_text: str = "",
 ) -> SevakApiResponse:
-    """Map the raw Evon result into the frontend-compatible SevakApiResponse."""
-    doc_text_source = ""
+    """Map the Evon result into the frontend-compatible SevakApiResponse."""
 
-    # Issuing authority / legal section / reference extracted from 'what' text.
-    issuing_authority = "Competent Authority"
-    legal_section = "Not specified in document"
-    reference_number = f"SEVAK-{uuid.uuid4().hex[:8].upper()}"
+    # Issuing authority determination
+    authority_defaults = {
+        "Traffic Police Notice": "State Traffic Police / Transport Department",
+        "Income Tax Department": "Income Tax Department (ITD), Ministry of Finance",
+        "Banking & KYC": "Bank / Lending Institution",
+        "Legal Summons": "Judicial Magistrate / Civil Court",
+        "Government Notice": "Competent Government Authority",
+        "Unrecognized / Not a Document": "Competent Authority",
+    }
+    issuing_authority = authority_defaults.get(category, "Competent Authority")
 
-    m_auth = re.search(r"(?:issued by|issuing authority|authority)[:\-]\s*([^.\n]+)", evon.what, re.IGNORECASE)
+    m_auth = re.search(r"(?:issued by|issuing authority|authority)[:\-]\s*([^.\n]+)", evon.what + " " + document_text, re.IGNORECASE)
     if m_auth:
-        issuing_authority = m_auth.group(1).strip()
-    m_section = re.search(r"(?:section|under|sec\.?)\s*([0-9A-Za-z\(\)\-\/]+)", evon.why + " " + evon.what, re.IGNORECASE)
+        candidate = m_auth.group(1).strip()
+        if len(candidate) > 3 and not candidate.lower().startswith("competent"):
+            issuing_authority = candidate
+
+    # Legal section determination
+    legal_section = "Not specified in document"
+    m_section = re.search(r"(?:section|under|sec\.?)\s*([0-9A-Za-z\(\)\-\/]+)", evon.why + " " + evon.what + " " + document_text, re.IGNORECASE)
     if m_section:
-        legal_section = m_section.group(1).strip()
+        legal_section = f"Section {m_section.group(1).strip()}"
+
+    # Real reference number extraction from document text, or fall back to SEVAK ID
+    extracted_ref = _extract_reference_number(document_text) or _extract_reference_number(evon.what)
+    reference_number = extracted_ref or f"SEVAK-{uuid.uuid4().hex[:8].upper()}"
+
+    # Official verification portal
+    official_portal_url = _get_official_portal_url(category)
 
     # Deadlines block.
     deadline_items = evon.deadlines or []
@@ -244,7 +351,7 @@ def _map_evon_to_response(
             issuing_authority=issuing_authority,
             legal_section=legal_section,
             reference_number=reference_number,
-            official_portal_url=None,
+            official_portal_url=official_portal_url,
         ),
         voice_summaries=voice_summaries,
         audio_base64=audio_base64,
@@ -264,6 +371,7 @@ async def health() -> dict:
 def _local_document_analysis(
     document_text: str,
     language: str,
+    chunks: list = None,
 ) -> EvonAnalysisResult:
     """Grounded local fallback used when Evon is unavailable.
 
@@ -277,6 +385,7 @@ def _local_document_analysis(
 
     if not text:
         return EvonAnalysisResult(
+            document_type="unknown",
             severity="YELLOW",
             severity_reason="No readable document text was extracted.",
             what="SEVAK could not extract readable text from this document.",
@@ -311,6 +420,7 @@ def _local_document_analysis(
     subject = first_match([
         r"Subject\s*:\s*(.+?)(?=\s+Date\s*:|\s+Dear\s+Customer\b|$)",
         r"विषय\s*:\s*(.+?)(?=\s+दिनांक|$)",
+        r"(?:Matter|Re)\s*:\s*(.+?)(?=\s+Date\s*:|$)",
     ])
 
     amount = first_match([
@@ -332,9 +442,11 @@ def _local_document_analysis(
     reference = first_match([
         r"(?:Reference|Ref\.?|Reference\s+Number)"
         r"\s*(?:No\.?|Number)?\s*:\s*([A-Za-z0-9./_-]+)",
+        r"(?:Challan|Notice)\s*No\.?\s*:\s*([A-Za-z0-9./_-]+)",
     ])
 
     deadline_date = None
+    days_left = None
 
     if deadline and date_value:
         deadline_match = re.search(
@@ -376,38 +488,66 @@ def _local_document_analysis(
                 elif unit.startswith("month"):
                     deadline_date = parsed_date + timedelta(days=count * 30)
 
-    facts = []
+                days_left = (deadline_date.date() - datetime.now().date()).days
 
-    if subject:
-        facts.append(f"Subject: {subject}")
-
-    if date_value:
-        facts.append(f"Date: {date_value}")
-
-    if amount:
-        facts.append(f"Amount mentioned: Rs. {amount}")
-
-    if deadline:
-        facts.append(f"Response/payment period mentioned: {deadline}")
-
-    if deadline_date:
-        facts.append(
-            f"Calculated deadline from the document date: "
-            f"{deadline_date.strftime('%d %B %Y')}"
+    # Dynamic severity determination
+    lowered = text.lower()
+    urgent_legal_signals = [
+        "court", "summons", "warrant", "arrest", "section 138", "sarfaesi",
+        "best-judgment", "property seize", "disconnection", "prosecution",
+        "impound", "legal proceedings", "non-bailable", "penalty under section",
+    ]
+    if any(k in lowered for k in urgent_legal_signals) or (days_left is not None and days_left <= 7):
+        severity = "RED"
+        severity_reason = (
+            "Urgent statutory or legal action required. Document involves court, "
+            "prosecution, penalty risk, or a critical upcoming deadline."
+        )
+    elif deadline or amount or any(k in lowered for k in ["notice", "challan", "overdue", "mandatory", "furnish", "kyc"]):
+        severity = "YELLOW"
+        severity_reason = (
+            "Document contains a compliance, payment, or response requirement "
+            "with a stated timeframe."
+        )
+    else:
+        severity = "GREEN"
+        severity_reason = (
+            "Informational document or notice without imminent legal or penalty risk."
         )
 
+    # Document type inference
+    doc_type = "Official Notice"
+    if any(k in lowered for k in ["challan", "traffic", "over-speeding"]):
+        doc_type = "Traffic Police Notice / E-Challan"
+    elif any(k in lowered for k in ["income tax", "section 148", "itd"]):
+        doc_type = "Income Tax Notice"
+    elif any(k in lowered for k in ["court", "summons", "section 138"]):
+        doc_type = "Court Summons / Legal Notice"
+    elif any(k in lowered for k in ["loan", "sarfaesi", "kyc", "bank"]):
+        doc_type = "Banking / Financial Notice"
+
+    facts = []
+    if subject:
+        facts.append(f"Subject: {subject}")
+    if date_value:
+        facts.append(f"Date: {date_value}")
+    if amount:
+        facts.append(f"Amount mentioned: Rs. {amount}")
+    if deadline:
+        facts.append(f"Response/payment period: {deadline}")
+    if deadline_date:
+        facts.append(
+            f"Calculated deadline: {deadline_date.strftime('%d %B %Y')}"
+        )
     if reference:
         facts.append(f"Reference number: {reference}")
 
     if subject:
-        what = f"The document contains a notice concerning: {subject}."
+        what = f"The document is a {doc_type} concerning: {subject}."
     elif facts:
-        what = "The document contains the following extracted facts: " + "; ".join(facts)
+        what = f"The document is an official notice with the following facts: " + "; ".join(facts)
     else:
-        what = (
-            "The document contains readable text, but no specific structured "
-            "facts were confidently extracted."
-        )
+        what = f"This is an official document requiring your review ({doc_type})."
 
     if amount and deadline:
         why = (
@@ -417,7 +557,7 @@ def _local_document_analysis(
     elif deadline:
         why = (
             f"The document explicitly states a time period of {deadline}, "
-            "which should be noted."
+            "which must be respected to avoid further action."
         )
     elif amount:
         why = (
@@ -426,19 +566,15 @@ def _local_document_analysis(
         )
     else:
         why = (
-            "The document-specific information should be reviewed against "
-            "the actual wording before taking action."
+            "The document requires citizen review against the issuing authority's "
+            "stated provisions."
         )
 
     if deadline:
-        severity_reason = (
-            "The document contains an explicit time-related requirement."
-        )
-
         if deadline_date:
             first_step = (
-                f"Note the stated {deadline} period; the calculated date "
-                f"from the document date is {deadline_date.strftime('%d %B %Y')}."
+                f"Note the {deadline} deadline; calculated last date is "
+                f"{deadline_date.strftime('%d %B %Y')}."
             )
         else:
             first_step = (
@@ -446,80 +582,69 @@ def _local_document_analysis(
                 "document safely stored."
             )
     else:
-        severity_reason = (
-            "The document requires attention, but no explicit deadline "
-            "was extracted."
-        )
         first_step = (
-            "Read the complete notice and identify any response or payment requirement."
+            "Read the complete notice and verify any action requirement."
         )
 
     second_step = (
-        f"Verify the amount mentioned in the document: Rs. {amount}."
+        f"Verify the amount of Rs. {amount} on the official government or bank portal."
         if amount
-        else
-        "Verify the important facts directly against the original document."
+        else "Check the reference number and dates on the official issuing portal."
     )
 
-    next_steps = [
-        first_step,
-        second_step,
-        "Use the issuing authority's official contact channel if clarification is required.",
-    ]
+    third_step = (
+        "Consult a qualified professional or use the official helpline before making payments."
+    )
+
+    next_steps = [first_step, second_step, third_step]
+
+    # Citations from real chunks
+    citations = []
+    if chunks:
+        for c in chunks:
+            raw = getattr(c, "raw_text", "")
+            p_num = getattr(c, "page_number", 1)
+            para_num = getattr(c, "paragraph_index", 1)
+            loc = f"Page {p_num}, Paragraph {para_num}"
+            if amount and amount in raw:
+                citations.append(CitationItem(claim=f"Amount of Rs. {amount} stated in document", source_location=loc))
+                break
+            if deadline and any(d in raw.lower() for d in ["within", "days", "day"]):
+                citations.append(CitationItem(claim=f"Deadline period: {deadline}", source_location=loc))
+                break
 
     spoken = ["Namaste! Main SEVAK hoon."]
-
     if subject:
-        spoken.append(f"Document mein {subject} diya gaya hai.")
+        spoken.append(f"Document mein {subject} ka notice hai.")
     else:
-        spoken.append("Document se kuch important information mili hai.")
-
+        spoken.append(f"Yeh aapka {doc_type} hai.")
     if amount:
-        spoken.append(f"Outstanding amount Rs. {amount} hai.")
-
+        spoken.append(f"Amount Rs. {amount} likha hai.")
     if deadline:
-        if deadline_date:
-            spoken.append(
-                f"Payment ya response ke liye {deadline} ka period diya gaya hai. "
-                f"Document ki date ke basis par calculated date "
-                f"{deadline_date.strftime('%d %B %Y')} hai."
-            )
-        else:
-            spoken.append(
-                f"Document mein {deadline} ka time period diya gaya hai."
-            )
-
-    if reference:
-        spoken.append(f"Reference number {reference} hai.")
+        spoken.append(f"Action ke liye {deadline} ka time diya gaya hai.")
 
     deadline_records = []
-
     if deadline:
         deadline_records.append({
-            "text": deadline,
-            "date": deadline_date.strftime("%Y-%m-%d") if deadline_date else None,
-            "days_remaining": None,
-            "urgency_level": "medium",
-            "consequence": None,
-            "action": "Complete the required action stated in the notice.",
+            "action": "Complete the required action or response stated in notice.",
             "timeline": deadline_date.strftime("%Y-%m-%d") if deadline_date else deadline,
             "source_page": 1,
         })
 
     return EvonAnalysisResult(
-        severity="YELLOW",
+        document_type=doc_type,
+        severity=severity,
         severity_reason=severity_reason,
         what=what,
         why=why,
         next_steps=next_steps,
         rights_and_protections=(
-            "SEVAK is showing information explicitly extracted from "
-            "the document. For legal or financial decisions, verify "
-            "the original notice and consult the appropriate official "
-            "authority or qualified professional when necessary."
+            "SEVAK is an AI document assistant, not a lawyer. "
+            "For legal dispute resolution, verify through the official authority "
+            "or consult a qualified advocate."
         ),
         deadlines=deadline_records,
-        citations=[],
+        citations=citations,
         spoken_summary_regional=" ".join(spoken),
     )
 @router.post("/api/analyze-document", tags=["analysis"])
@@ -555,10 +680,10 @@ async def analyze_document(
     try:
         if is_pdf:
             chunks = extract_pdf_chunks(content, filename)
-            document_text = pdf_compose(chunks)
+            document_text = build_grounded_context(chunks) or pdf_compose(chunks)
         else:
             chunks, ocr_fallback = ocr_image_chunks(content, filename)
-            document_text = ocr_compose(chunks)
+            document_text = build_grounded_context(chunks) or ocr_compose(chunks)
             demo_fallback = ocr_fallback
     except HTTPException:
         raise
@@ -582,7 +707,6 @@ async def analyze_document(
         category, classification_confidence = _detect_category(document_text)
 
     # ---- Evon 30B reasoning --------------------------------------------
-    # ---- Evon 30B reasoning --------------------------------------------
     try:
         evon_result = await evon.analyze(document_text, language=language)
     except Exception:
@@ -590,6 +714,7 @@ async def analyze_document(
         evon_result = _local_document_analysis(
             document_text=document_text,
             language=language,
+            chunks=chunks,
         )
 
     # Evon may return a generic fallback result instead of raising an
@@ -606,6 +731,14 @@ async def analyze_document(
         evon_result = _local_document_analysis(
             document_text=document_text,
             language=language,
+            chunks=chunks,
+        )
+
+    # Re-evaluate category corroborating with Evon's detected document_type
+    if not (demo_fallback and not document_text.strip()):
+        category, classification_confidence = _detect_category(
+            document_text,
+            model_doc_type=getattr(evon_result, "document_type", None),
         )
 
     # ---- Validate Evon citations against real extracted evidence --------
@@ -631,6 +764,7 @@ async def analyze_document(
         while len(DOCUMENT_CONTEXT_STORE) > MAX_DOCUMENT_CONTEXTS:
             oldest_id = next(iter(DOCUMENT_CONTEXT_STORE))
             DOCUMENT_CONTEXT_STORE.pop(oldest_id, None)
+
     # ---- Timbre TTS for the spoken summary -----------------------------
     audio_base64: Optional[str] = None
     try:
@@ -644,7 +778,7 @@ async def analyze_document(
 
     response = _map_evon_to_response(
         document_id=document_id,
-evon=evon_result,
+        evon=evon_result,
         filename=filename,
         file_size_bytes=len(content),
         file_type=document.content_type or "application/octet-stream",
@@ -654,6 +788,7 @@ evon=evon_result,
         category=category,
         audio_base64=audio_base64,
         demo_fallback=demo_fallback,
+        document_text=document_text,
     )
     return response
 
@@ -1090,7 +1225,7 @@ async def _answer_from_evon(
 async def ask_question(payload: dict) -> dict:
     """Answer a follow-up question using the uploaded document context."""
     question = payload.get("question", "")
-    document_id = payload.get("documentId")
+    document_id = payload.get("documentId") or payload.get("document_id")
     language = payload.get("language", "hinglish")
 
     if not question or not str(question).strip():
@@ -1114,7 +1249,7 @@ async def ask_question(payload: dict) -> dict:
             context=context,
         )
     except Exception:
-        answer = _demo_answer(str(question), str(language))
+        answer = evon._demo_answer(str(question), str(language))["answer"]
 
     return {
         "answer": answer,

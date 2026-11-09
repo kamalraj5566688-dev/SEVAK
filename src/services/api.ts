@@ -1,5 +1,4 @@
 import { SevakAnalysisResult, SupportedLanguage } from '../types';
-import { SAMPLE_DOCUMENTS } from '../data/sampleDocuments';
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
@@ -81,33 +80,10 @@ export class SevakApiService {
       }
     }
 
-    // Demo Fallback Mode (Safe, informative, responsive to file characteristics)
-    await new Promise((r) => setTimeout(r, 2200)); // realistic thinking latency
-
-    const fileNameLower = file.name.toLowerCase();
-    let template = SAMPLE_DOCUMENTS.echallan;
-
-    if (fileNameLower.includes('bank') || fileNameLower.includes('kyc') || fileNameLower.includes('sbi') || fileNameLower.includes('hdfc')) {
-      template = SAMPLE_DOCUMENTS.bank_kyc;
-    } else if (fileNameLower.includes('tax') || fileNameLower.includes('itd') || fileNameLower.includes('income') || fileNameLower.includes('142')) {
-      template = SAMPLE_DOCUMENTS.tax_notice;
-    }
-
-    const sizeInMB = (file.size / (1024 * 1024)).toFixed(1);
-
-    return {
-      ...template,
-      id: `doc-${Date.now()}`,
-      originalFileName: file.name,
-      fileSize: `${sizeInMB} MB`,
-      fileType: file.type || 'application/pdf',
-      uploadDate: new Date().toLocaleDateString('en-IN', {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      }),
-      isDemoFallback: true,
-    };
+    // Backend unavailable: return an honest error instead of faking a document analysis.
+    throw new Error(
+      `Backend unreachable at ${API_BASE_URL}. Start the FastAPI backend and try again.`
+    );
   }
 
   /**

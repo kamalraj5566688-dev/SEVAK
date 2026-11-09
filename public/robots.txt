@@ -1,0 +1,15 @@
+# SEVAK — Voice-First Indian Document Assistant
+# Robots.txt
+
+User-agent: *
+Allow: /
+
+# Do not crawl internal app routes or API endpoints
+Disallow: /api/
+Disallow: /analyzing
+Disallow: /results
+Disallow: /voice
+Disallow: /__vite__
+
+# Sitemap location
+Sitemap: https://sevak.example.com/sitemap.xml

@@ -6,7 +6,7 @@ from typing import Any
 
 
 PAGE_PARAGRAPH_RE = re.compile(
-    r"Page\s+(\d+),\s*Paragraph\s+(\d+)",
+    r"Page\s+(\d+),\s*(?:Paragraph|Para)\s+(\d+)",
     re.IGNORECASE,
 )
 

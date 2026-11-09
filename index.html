@@ -3,19 +3,89 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
+    <meta name="author" content="SEVAK — Voice-First Indian Document Assistant">
+    <meta name="keywords" content="SEVAK, legal notice assistant, India, income tax notice, rent eviction, SARFAESI, bank KYC, traffic challan, document explainer, voice-first, Hinglish, Hindi, Bhojpuri, Maithili">
+    <meta name="theme-color" content="#082C5A">
+
     <title>SEVAK — Voice-First Indian Document Assistant</title>
-    <meta name="description" content="Confusing notices, bank letters aur government documents ko simple language mein samjho - voice ke saath.">
+    <meta name="description" content="Confusing notices, bank letters aur government documents ko simple language mein samjho - voice ke saath. Income tax, rent eviction, SARFAESI, challan aur kagazon ko samjhein bina kisi lawyer ke.">
+
     <meta property="og:title" content="SEVAK — Voice-First Indian Document Assistant">
     <meta property="og:description" content="Samjhega. Batayega. Raasta dikhayega. Confusing notices, bank letters aur government documents ko simple language mein samjho - voice ke saath.">
     <meta property="og:type" content="website">
+    <meta property="og:url" content="https://sevak.example.com">
+    <meta property="og:image" content="/assets/images/og-sevak.svg">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:site_name" content="SEVAK">
+    <meta property="og:locale" content="en_IN">
+
     <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="SEVAK — Voice-First Indian Document Assistant">
+    <meta name="twitter:description" content="Confusing notices, bank letters aur government documents ko simple language mein samjho - voice ke saath.">
+    <meta name="twitter:image" content="/assets/images/og-sevak.svg">
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="apple-touch-icon" type="image/svg+xml" href="/apple-touch-icon.svg">
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   </head>
   <body class="bg-[#FAF7F0] text-slate-800 antialiased selection:bg-orange-200 selection:text-orange-950 min-h-screen">
     <div id="root"></div>
+
+    {/* Force HTTPS in production (best-effort; HSTS should also be set at the server/CDN level). */}
+    <script>
+      (function () {
+        if (location.protocol === 'http:' && !location.hostname.includes('localhost') && !location.hostname.includes('127.0.0.1')) {
+          location.protocol = 'https:';
+        }
+      })();
+    </script>
+
+    {/* Analytics (Plausible). Replace VITE_PLAUSIBLE_DOMAIN with your domain and enable via env. */}
+    <script type="module">
+      (function () {
+        var domain = import.meta.env?.VITE_PLAUSIBLE_DOMAIN;
+        if (!domain) return;
+        window.plausible = window.plausible || function () {
+          (window.plausible.q = window.plausible.q || []).push(arguments);
+        };
+        var s = document.createElement('script');
+        s.defer = true;
+        s.src = 'https://plausible.io/js/script.outbound-links.js';
+        s.setAttribute('data-domain', domain);
+        document.head.appendChild(s);
+      })();
+    </script>
+
+    {/* Error monitoring (Sentry). Configure VITE_SENTRY_DSN to enable. */}
+    <script type="module">
+      (function () {
+        var dsn = import.meta.env?.VITE_SENTRY_DSN;
+        if (!dsn) return;
+        var s = document.createElement('script');
+        s.defer = true;
+        s.src = 'https://browser.sentry-cdn.com/7.100.0/tracing.min.js';
+        s.onload = function () {
+          Sentry.init({
+            dsn: dsn,
+            environment: import.meta.env?.VITE_SENTRY_ENVIRONMENT || 'production',
+            tracesSampleRate: parseFloat(import.meta.env?.VITE_SENTRY_TRACES_SAMPLE_RATE || '0.1'),
+            integrations: [
+              new Sentry.BrowserTracing(),
+              new Sentry.Replay()
+            ],
+            replaysSessionSampleRate: 0.1,
+            replaysOnErrorSampleRate: 1.0
+          });
+        };
+        document.head.appendChild(s);
+      })();
+    </script>
+
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

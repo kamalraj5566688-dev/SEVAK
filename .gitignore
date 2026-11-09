@@ -31,3 +31,8 @@ env/
 Thumbs.db
 *.log
 .aistudio/
+
+# Local media generation (keep out of GitHub repo)
+brag-output/
+test_chrome.html
+

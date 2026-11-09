@@ -6,9 +6,11 @@ export const Footer: React.FC = () => {
       {/* Heritage Monuments Skyline Silhouette along the horizon */}
       <div className="relative w-full h-10 sm:h-14 overflow-hidden pointer-events-none select-none -mb-1">
         <img
-          src="/public/assets/images/heritage_silhouette.png"
+          src="/assets/images/heritage_silhouette.png"
           alt=""
-          className="w-full h-full object-cover object-bottom opacity-85"
+          className="w-full h-full object-cover object-bottom opacity-85 max-w-full h-auto"
+          loading="lazy"
+          decoding="async"
         />
       </div>
 
@@ -34,6 +36,22 @@ export const Footer: React.FC = () => {
             <span>•</span>
             <span>Great Indian AI Internship Challenge</span>
             <span role="img" aria-label="Indian Flag" className="text-sm">🇮🇳</span>
+            <a
+              href="/privacy.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-300/80 hover:text-white underline underline-offset-2"
+            >
+              Privacy
+            </a>
+            <a
+              href="/terms.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-300/80 hover:text-white underline underline-offset-2"
+            >
+              Terms
+            </a>
           </div>
         </div>
       </div>

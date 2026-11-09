@@ -62,11 +62,21 @@ class PrismaSTTClient:
             "itn_native_numerals": "true",
         }
 
+        ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "wav"
+        content_type_map = {
+            "wav": "audio/wav",
+            "webm": "audio/webm",
+            "ogg": "audio/ogg",
+            "mp3": "audio/mpeg",
+            "m4a": "audio/mp4",
+        }
+        content_type = content_type_map.get(ext, "audio/wav")
+
         files = {
             "audio_file": (
                 filename,
                 audio_bytes,
-                "audio/wav",
+                content_type,
             )
         }
 

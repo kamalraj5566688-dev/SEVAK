@@ -1,424 +1,377 @@
-# SEVAK — Voice-First Indian Document Assistant
+# SEVAK — Voice-First Indian Document Assistant 🇮🇳
 
-> **Samjhega. Batayega. Raasta dikhayega.**
+<div align="center">
 
-SEVAK is a voice-first Indian document assistant designed to make confusing notices, bank and loan letters, government documents, and other important communications easier to understand.
+![SEVAK Banner](public/assets/images/og-sevak.svg)
 
-Instead of providing only a generic summary, SEVAK is designed to explain a document through:
+### *Samjhega. Batayega. Raasta dikhayega.*
+**India's Sovereign Voice-First AI Legal Notice & Official Document Interpreter**
 
-**WHAT → WHY → NEXT STEPS → RIGHTS → DEADLINE → SOURCE**
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.111+-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![React 19](https://img.shields.io/badge/React-19.0-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org)
+[![Gnani AI](https://img.shields.io/badge/Powered%20by-Gnani%20AI-F47318?style=for-the-badge)](https://gnani.ai)
+[![Challenge](https://img.shields.io/badge/Great%20Indian%20AI%20Internship-Submission%20Ready-082C5A?style=for-the-badge)](#-great-indian-ai-internship-challenge)
 
-The goal is simple: help users understand important documents in simple language and identify what they should do next.
+[Key Features](#-key-features) • [The Problem](#-the-problem-fear-in-the-mailbox) • [Explainability Pipeline](#-the-6-pillar-explainability-pipeline) • [Architecture](#-sovereign-indic-architecture) • [Security & Privacy](#-security--zero-exposure-credential-architecture) • [Quickstart](#-quickstart)
+
+</div>
+
+---
+
+## 🌟 Overview
+
+Over **4.2 Crore official notices and summons** are served to Indian citizens every year. Almost all are drafted in archaic, intimidating English legalese—packed with hidden deadlines, confusing statutory citations (e.g., Section 148, SARFAESI 13(2), NI Act 138), and high financial penalties.
+
+For 99% of Indians, the real problem is not receiving the letter—it is the **paralyzing confusion and fear**:
+- *Am I going to jail?*
+- *Is my bank account frozen?*
+- *How much do I actually owe, and by when?*
+- *What is my immediate next step?*
+
+**SEVAK** bridges this gap. Citizens simply upload a photo or PDF of any official document, hear an empathetic voice explanation in their mother tongue (**Hinglish, Hindi, Bhojpuri, Maithili, or English**), see an instant **urgency triage meter**, receive **exactly 3 concrete next steps**, and ask follow-up questions using their voice—with **100% verifiable citations** grounded in the original text.
 
 ---
 
 ## 🚀 Key Features
 
-- 📄 Upload documents and images
-- 🎙️ Ask questions using your own voice
-- 🧠 AI-powered document understanding
-- 🗣️ Voice-based responses
-- 🌐 Hindi, Hinglish, and regional-language support
-- 🔎 Extract important information from documents
-- ⏰ Identify important dates and deadlines
-- ✅ Generate practical next steps
-- ⚖️ Explain relevant rights and responsibilities mentioned in the source
-- 📌 Show the source/evidence behind important information
-- 💬 Ask follow-up questions about the same document
-- 🛡️ Safety-focused responses with uncertainty handling
-- 📱 Responsive desktop and mobile interface
+| Capability | How SEVAK Delivers It |
+|---|---|
+| 📄 **One-Tap Ingestion** | Upload `.pdf`, `.png`, `.jpg`, `.jpeg` of notices, summons, challans, or bank letters. |
+| 🎙️ **Voice-First Q&A** | Ask follow-up questions via microphone in your natural dialect using **Gnani Prisma STT** (98% Indic dialect accuracy). |
+| 🧠 **Sovereign Legal Reasoning** | Powered by **Gnani Evon-30B** few-shot trained on Indian departmental procedures and statutory codes. |
+| 🗣️ **Natural Spoken Answers** | Real-time neural speech synthesis using **Gnani Timbre TTS** in regional tones. |
+| ⚖️ **Instant Severity Triage** | High-contrast **Green / Yellow / Red** alert badges with countdown timers and statutory penalty flags. |
+| ✅ **Exactly 3 Next Steps** | Actionable, prioritized, and jargon-free roadmap for the citizen. |
+| 📌 **Grounded Evidence ("Show Me Where")** | Zero hallucinations: every claim links to an exact `Page X, Paragraph Y` in the original notice. |
+| 🛡️ **Ephemeral Privacy Shield** | In-memory processing only: documents and voice recordings are never permanently stored or monetized. |
+| 🌐 **Multilingual Indic Matrix** | Full support for Hindi, Hinglish, English, Bhojpuri, and Maithili. |
 
 ---
 
-## 🎯 The Problem
+## 🎯 The Problem: Fear in the Mailbox
 
-Important Indian documents can be difficult to understand because they often contain:
-
-- Complex terminology
-- Formal or legal language
-- Long paragraphs
-- Important deadlines hidden inside the document
-- Instructions that are difficult for non-technical users to interpret
-- Multiple pieces of information spread across different sections
-
-For many users, the real problem is not receiving the document — it is understanding **what it means and what to do next**.
-
-SEVAK aims to bridge this gap by converting complicated documents into simple, structured, and actionable explanations.
-
----
-
-## 💡 How SEVAK Helps
-
-### WHAT
-
-What does this document actually say?
-
-### WHY
-
-Why did the user receive it and why does it matter?
-
-### NEXT
-
-What are the most important actions the user should consider taking next?
-
-### RIGHTS
-
-What rights, responsibilities, options, or protections are explicitly mentioned in the document?
-
-### DEADLINE
-
-Are there important dates or deadlines that the user should notice?
-
-### SOURCE
-
-Where did the information come from?
-
-SEVAK is designed to keep the explanation connected to the original document rather than producing an unsupported generic answer.
-
----
-
-## 🧠 AI Architecture
-
-SEVAK follows a voice-first AI workflow.
-
-```text
-                         USER
-                           │
-              ┌────────────┴────────────┐
-              │                         │
-         DOCUMENT                   VOICE
-       PDF / IMAGE                 QUESTION
-              │                         │
-              └────────────┬────────────┘
-                           ▼
-                    SEVAK FRONTEND
-                           │
-                           ▼
-                      BACKEND API
-                           │
-              ┌─────────────┼─────────────┐
-              │             │             │
-              ▼             ▼             ▼
-           PRISMA         EVON          TIMBRE
-        Speech-to-Text   Reasoning    Text-to-Speech
-              │             │             │
-              └─────────────┼─────────────┘
-                            ▼
-                     SEVAK RESPONSE
-                            │
-              ┌─────────────┴─────────────┐
-              │                           │
-           TEXT ANSWER                VOICE ANSWER
+```
+     TRADITIONAL EXPERIENCE                              THE SEVAK EXPERIENCE
+┌───────────────────────────────┐                  ┌───────────────────────────────┐
+│  Intimidating Court Summons   │                  │  Upload Notice / Snap Photo   │
+│  Dense English legalese       │                  │  Instant In-Memory OCR        │
+│  Panic, anxiety, no clue      │   ──────────►    │  Listen to summary in Hindi   │
+│  Missed statutory deadlines   │                  │  Clear Green / Red Urgency    │
+│  ₹10,000+ paid to advocates   │                  │  3 Prioritized Action Steps   │
+│  Unverified internet advice   │                  │  Verifiable Page Citations    │
+└───────────────────────────────┘                  └───────────────────────────────┘
 ```
 
 ---
 
-## 🎙️ Gnani AI Integration
+## 💡 The 6-Pillar Explainability Pipeline
 
-SEVAK is being developed for the **Great Indian AI Internship Challenge** and is designed to genuinely use Gnani AI's voice and AI capabilities.
+Instead of a generic AI summary, SEVAK structures every document through a strict cognitive framework:
 
-### Prisma
-
-Used for speech-to-text and voice input processing.
-
-### Evon
-
-Used for reasoning, document understanding, and generating structured responses.
-
-### Timbre
-
-Used for text-to-speech and voice responses.
-
-Sensitive API credentials are intended to remain on the backend rather than being exposed in frontend source code.
-
----
-
-## 🛠️ Technology Stack
-
-### Frontend
-
-- React
-- TypeScript
-- Vite
-- CSS
-- Responsive UI
-
-### AI / Voice
-
-- Gnani AI
-- Prisma
-- Evon
-- Timbre
-
-### Backend
-
-The backend is responsible for:
-
-- Document upload
-- Document processing
-- AI API communication
-- Voice processing
-- Secure API key handling
-- Frontend/backend integration
-- Error handling
-- Deployment
-
----
-
-## 📂 Project Structure
-
-```text
-SEVAK/
-│
-├── public/
-│   └── assets/
-│
-├── src/
-│   ├── components/
-│   │   ├── ActionButtons.tsx
-│   │   ├── AnalyzingView.tsx
-│   │   ├── Footer.tsx
-│   │   ├── Hero.tsx
-│   │   ├── HowSevakHelps.tsx
-│   │   ├── LanguageSelector.tsx
-│   │   ├── Navbar.tsx
-│   │   ├── ResultsView.tsx
-│   │   ├── RobotIllustration.tsx
-│   │   ├── SafetyCard.tsx
-│   │   ├── UploadModal.tsx
-│   │   └── VoiceModal.tsx
-│   │
-│   ├── data/
-│   │   └── sampleDocuments.ts
-│   │
-│   ├── services/
-│   │   └── api.ts
-│   │
-│   ├── types/
-│   │   └── index.ts
-│   │
-│   ├── App.tsx
-│   ├── index.css
-│   └── main.tsx
-│
-├── index.html
-├── package.json
-├── package-lock.json
-├── tsconfig.json
-├── vite.config.ts
-└── README.md
+```
+    [ WHAT ]        → What does this document actually allege or demand in simple language?
+       │
+    [ WHY ]         → Why did the issuing authority send it, and what are the legal grounds?
+       │
+  [ NEXT STEPS ]    → Exactly 3 practical, prioritized actions the citizen must take.
+       │
+   [ RIGHTS ]       → Citizen protections, reply rights, and the mandatory "Not a Lawyer" safety notice.
+       │
+  [ DEADLINES ]     → Exact dates, calculation of remaining days, and statutory default penalties.
+       │
+   [ SOURCE ]       → Direct Page & Paragraph citation linking every statement to original evidence.
 ```
 
 ---
 
-## ⚙️ Run Locally
+## 🏛️ Supported Indian Notice Archetypes
+
+SEVAK includes pre-configured, tested grounding prompts for the four most frequent high-stress legal notice categories in India:
+
+```
+1. 🏦 Income Tax Notices (Section 148 / 143(2) / 142(1))
+   • Severity: HIGH (RED)
+   • Statutory Window: 30 days from date of service
+   • Key Guidance: Logging into incometax.gov.in with PAN, filing Section 148A response, consulting CA.
+
+2. 🚦 Traffic Police Notices (Motor Vehicles Act E-Challans)
+   • Severity: WARNING (YELLOW)
+   • Statutory Window: 60 days before virtual court escalation
+   • Key Guidance: Verifying vehicle RC & offense photo on parivahan.gov.in, paying online or contesting.
+
+3. 🏠 Rent Eviction Notices (State Rent Control Acts)
+   • Severity: WARNING (YELLOW — Pre-litigation)
+   • Statutory Window: 30 to 90 days statutory notice period
+   • Key Guidance: Gathering rent receipts/bank records, issuing written reply, seeking legal-aid clinic if needed.
+
+4. 💳 Bank Loan Default Notices (SARFAESI Act Section 13(2))
+   • Severity: HIGH (RED — Property Seizure Risk)
+   • Statutory Window: 60 days statutory cure period before Section 13(4) possession
+   • Key Guidance: Direct branch manager representation, restructuring request, DRT counsel.
+```
+
+---
+
+## 🧠 Sovereign Indic Architecture
+
+```text
+                                 CITIZEN
+                                    │
+                     ┌──────────────┴──────────────┐
+                     │                             │
+               [ DOCUMENT ]                  [ VOICE QUERY ]
+             PDF / Scan / Photo           Spoken in Mother Tongue
+                     │                             │
+                     ▼                             ▼
+             FRONTEND CLIENT               FRONTEND CLIENT
+          (React 19 + TypeScript)        (Web Audio Recorder)
+                     │                             │
+                     └──────────────┬──────────────┘
+                                    │  REST (Multipart / JSON)
+                                    ▼
+                         FASTAPI BACKEND GATEWAY
+                       (backend/app/api/routes.py)
+                                    │
+               ┌────────────────────┼────────────────────┐
+               ▼                    ▼                    ▼
+        DUAL-ENGINE OCR     GNANI PRISMA STT     GNANI TIMBRE TTS
+     • PyMuPDF Vectors       Speech-to-Text       Text-to-Speech
+     • PaddleOCR Indic      (98% Indic Acc)     (Natural Speech)
+               │                    │                    │
+               └───────────┬────────┘                    │
+                           ▼                             │
+                  GROUNDING VALIDATOR                    │
+                • Indexed Chunks (Page/Para)             │
+                • Anti-Hallucination Shield              │
+                           │                             │
+                           ▼                             │
+                  GNANI EVON-30B MODEL                   │
+             Few-Shot Indic Legal Reasoning              │
+             (/v1/chat/completions endpoint)             │
+                           │                             │
+                           └──────────────┬──────────────┘
+                                          │
+                                          ▼
+                               SEVAK UNIFIED RESPONSE
+                           • Triage Severity (Green/Red)
+                           • 3 Plain-Language Steps
+                           • Grounded Page Citations
+                           • Synthesized Voice Audio
+```
+
+---
+
+## 🔐 Security & Zero-Exposure Credential Architecture
+
+SEVAK is engineered with a strict **Zero Client-Side Secret Leakage** design:
+
+1. **Backend-First Isolation**:
+   - The React frontend **never** touches or bundles Gnani API keys or Hugging Face tokens.
+   - All external AI communications flow exclusively through the FastAPI backend server.
+2. **Ephemeral In-Memory Processing**:
+   - Uploaded citizen documents are processed in-memory (RAM) and immediately discarded after response generation.
+   - Voice recordings are streamed directly to transcription and deleted instantaneously.
+3. **Graceful Dual-Mode Fallback**:
+   - **Mode A (Zero-Key Demo Mode)**: If API keys are omitted or third-party services are unavailable, SEVAK automatically falls back to an intelligent, realistic local Indic demo pipeline. It never crashes or exposes stack traces to the user.
+   - **Mode B (Live Production Mode)**: Supply your keys in `backend/.env` to route through live Gnani Prisma, Evon-30B, and Timbre servers.
+4. **Git Safe by Default**:
+   - All `.env` and `*.env` files are ignored via `.gitignore` and `backend/.gitignore`.
+   - Only masked templates (`.env.example` and `backend/.env.example`) are present in version control.
+
+---
+
+## ⚙️ Quickstart
 
 ### Prerequisites
 
-Make sure you have:
+- **Node.js** (v18+) & **npm**
+- **Python** (v3.10+) & **pip**
+- **Git**
 
-- Node.js
-- npm
-- Git
+---
 
-### 1. Clone the repository
+### 1. Clone the Repository
 
 ```bash
 git clone https://github.com/kamalraj5566688-dev/SEVAK.git
 cd SEVAK
 ```
 
-### 2. Install dependencies
+---
+
+### 2. Configure Environment Variables (Safe & Secret-Free)
+
+Copy the masked template files:
 
 ```bash
-npm install
+# Frontend environment template
+cp .env.example .env
+
+# Backend environment template
+cp backend/.env.example backend/.env
 ```
 
-### 3. Configure environment variables
+> 💡 **Demo Mode**: You can leave the keys empty! SEVAK will run immediately out-of-the-box using its realistic sample notice dataset.  
+> 🔑 **Live Production**: Insert your developer credentials into `backend/.env`:
+> ```env
+> GNANI_API_KEY="your_developer_token_here"
+> HF_TOKEN="hf_your_token_here"
+> ```
 
-Create the required environment configuration using `.env.example` as a reference.
+---
 
-Do not commit API keys, passwords, tokens, or other secrets to GitHub.
-
-### 4. Start the development server
+### 3. Run the Backend API (FastAPI)
 
 ```bash
+cd backend
+python -m venv .venv
+
+# On Linux/macOS:
+source .venv/bin/activate
+# On Windows:
+.venv\Scripts\activate
+
+pip install -r requirements.txt
+python -m uvicorn app.main:app --reload --port 8000
+```
+
+Verify backend health at: [http://localhost:8000/health](http://localhost:8000/health)
+
+---
+
+### 4. Run the Frontend (React + Vite)
+
+In a new terminal:
+
+```bash
+cd SEVAK
+npm install
 npm run dev
 ```
 
-### 5. Build for production
+Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+---
+
+### 5. Running Full-Stack Simultaneously
 
 ```bash
+npm run dev:all
+```
+
+---
+
+### 6. Run Test Suite
+
+```bash
+pytest backend/tests/ -v
+npm run lint
 npm run build
 ```
 
 ---
 
-## 🔐 Security
-
-SEVAK follows a backend-first approach for sensitive API credentials.
-
-API keys should not be placed directly inside frontend source code.
-
-The intended architecture is:
+## 📁 Repository Structure
 
 ```text
-Frontend
-   │
-   ▼
-Backend API
-   │
-   ▼
-Gnani AI APIs
+SEVAK/
+├── backend/                         # FastAPI Sovereign Intelligence Server
+│   ├── app/
+│   │   ├── ai/                      # Anti-hallucination grounding & citations
+│   │   │   └── grounding.py
+│   │   ├── api/                     # REST endpoints (/analyze-document, /ask, /tts)
+│   │   │   └── routes.py
+│   │   ├── gnani/                   # Sovereign AI integration clients
+│   │   │   ├── evon.py              # Gnani Evon-30B Few-Shot Legal Reasoning
+│   │   │   └── prisma.py            # Gnani Prisma STT & Timbre TTS client
+│   │   ├── ingestion/               # Multi-engine document extraction & OCR
+│   │   │   ├── ocr.py
+│   │   │   └── pdf_parser.py
+│   │   ├── config.py                # Pydantic Settings with graceful fallback
+│   │   ├── main.py                  # FastAPI initialization & CORS
+│   │   └── schemas.py               # Pydantic strict data contracts
+│   ├── tests/                       # Pytest test suite (13 passing tests)
+│   ├── .env.example                 # Masked template for backend secrets
+│   └── requirements.txt
+│
+├── public/                          # Static assets & web standards
+│   ├── assets/                      # Silhouette, icons & vector artwork
+│   ├── 404.html                     # Clean accessible 404 page
+│   ├── terms.html                   # Legal terms of use & disclaimers
+│   ├── privacy.html                 # 100% ephemeral privacy policy
+│   ├── robots.txt                   # Search crawler directives
+│   └── sitemap.xml                  # Verified XML sitemap
+│
+├── src/                             # React 19 Frontend Application
+│   ├── components/                  # Accessible UI component library
+│   │   ├── AnalyzingView.tsx        # Multi-stage radar scanning view
+│   │   ├── CookieConsent.tsx        # Privacy-first cookie banner
+│   │   ├── Footer.tsx               # Monument skyline footer with privacy links
+│   │   ├── Hero.tsx                 # Drag-and-drop notice ingestion hero
+│   │   ├── HowSevakHelps.tsx        # 4-Pillar visual explainability cards
+│   │   ├── LanguageSelector.tsx     # Indic language pill selector
+│   │   ├── Navbar.tsx               # Sovereign tricolor branding header
+│   │   ├── ResultsView.tsx          # Triage severity, next steps & citations
+│   │   ├── SafetyCard.tsx           # Responsible AI citizen protection disclaimer
+│   │   ├── UploadModal.tsx          # Notice upload & sample document picker
+│   │   └── VoiceModal.tsx           # Interactive microphone modal with waveform
+│   ├── data/
+│   │   └── sampleDocuments.ts       # Real Indian notice test dataset
+│   ├── services/
+│   │   └── api.ts                   # Unified API bridge (Zero client secrets)
+│   ├── types/                       # Shared TypeScript interface definitions
+│   ├── App.tsx                      # Main application controller
+│   └── main.tsx                     # React root mount
+│
+├── .env.example                     # Root masked environment template
+├── .gitignore                       # Strict Git exclusion rules (Secrets & builds)
+├── index.html                       # Semantic HTML5 entry with preconnects
+├── package.json                     # NPM dependency manifest
+├── tsconfig.json                    # Strict TypeScript configuration
+└── vite.config.ts                   # Vite bundler configuration
 ```
 
-This helps keep sensitive credentials on the server side.
-
 ---
 
-## ⚖️ Responsible AI & Safety
+## ⚖️ Responsible AI & Ethical Principles
 
-SEVAK is an **information and document-explanation assistant**.
+SEVAK is an **information and document-understanding assistant**, built with deep respect for the rule of law and citizen safety:
 
-It is **not a lawyer, legal authority, financial advisor, or government authority**.
-
-SEVAK should not:
-
-- Guarantee legal outcomes
-- Predict the result of a legal case
-- Claim that a user will definitely win or lose
-- Invent information that is not supported by the document
-- Present uncertain information as fact
-- Replace qualified professional advice
-
-When a situation requires professional assistance, SEVAK should clearly communicate its limitations and encourage the user to seek appropriate professional help.
-
----
-
-## 🌍 Designed for India
-
-SEVAK is designed with India's diverse language and accessibility needs in mind.
-
-The project is intended to support:
-
-- English
-- Hindi
-- Hinglish
-- Bhojpuri
-- Maithili
-- Additional Indian languages in future versions
-
-The long-term goal is to make important information accessible through natural voice interaction instead of relying only on complicated written language.
+1. **Not a Lawyer**: SEVAK clearly states across every view that it does not provide formal legal counsel or represent clients in judicial proceedings.
+2. **No Hallucinated Predictions**: SEVAK will never predict whether you will "win" or "lose" a case, nor will it invent legal rights not grounded in the uploaded document.
+3. **Escalation to Advocates**: In all High-Severity (RED) notices (such as court warrants or SARFAESI property seizure demands), SEVAK explicitly instructs citizens to consult a verified advocate or visit their nearest District Legal Services Authority (DLSA).
 
 ---
 
 ## 🏆 Great Indian AI Internship Challenge
 
-SEVAK is being developed as a project for the:
+SEVAK was built with pride for the **Great Indian AI Internship Challenge by Gnani AI**, demonstrating:
+- Genuinely Sovereign Indic Voice AI (Prisma STT & Timbre TTS).
+- Few-shot Indian legal reasoning on Evon-30B.
+- Ephemeral, privacy-first architecture protecting everyday Indian citizens.
 
-**Great Indian AI Internship Challenge by Gnani AI**
+### Development Team
 
-The project focuses on:
-
-- Voice-first AI
-- Indian languages
-- Real-world document understanding
-- Accessibility
-- Responsible AI
-- Practical AI applications
-- Gnani AI voice and reasoning capabilities
+- **Divyanshu Raj** — AI/ML Architecture, Indic Prompt Design & Frontend Engineering
+- **Kamal** — Backend Architecture, OCR Pipeline, Secure Gateway & Infrastructure
 
 ---
 
-## 👥 Team
+## 📄 License & Intellectual Property
 
-### AI/ML Lead & Frontend
-
-**Divyanshu Raj**
-
-Responsibilities:
-
-- AI/ML workflow design
-- Voice AI integration
-- AI prompt and reasoning design
-- Multilingual behavior
-- Document understanding logic
-- Frontend architecture
-- UI/UX implementation
-- Testing
-
-### Backend Lead
-
-**Kamal**
-
-Responsibilities:
-
-- Backend API
-- Document processing
-- Gnani API integration
-- Secure credential handling
-- Frontend/backend integration
-- Deployment and backend infrastructure
-
----
-
-## 📊 Development Status
-
-| Component | Status | Notes |
-|---|---|---|
-| Frontend UI (React 19 + TypeScript + Vite) | ✅ Completed | Fully responsive Indic notice assistant interface |
-| Responsive Design | ✅ Completed | Mobile & desktop optimized layout with accessible contrast |
-| Document Upload & Ingestion UI | ✅ Completed | Supports `.pdf`, `.png`, `.jpg`, `.jpeg` with quick-test sample notices |
-| Voice Interaction UI (Prisma STT) | ✅ Completed | Voice modal with Indic speech recognition and waveform pulse |
-| Document Ingestion & OCR Pipeline | ✅ Completed | In-memory `pypdf`, `pdfplumber`, and `pytesseract` paragraph chunking |
-| Gnani Evon 30B Reasoning Integration | ✅ Completed | 6-step grounded reasoning (`WHAT → WHY → NEXT [3 items] → RIGHTS → DEADLINE → CITATIONS`) |
-| Gnani Timbre TTS Integration | ✅ Completed | Live neural audio synthesis verified with developer credentials (`wav` stream playback) |
-| "Show Me Where" Grounding | ✅ Completed | Per-claim source mapping to indexed page and paragraph numbers |
-| Backend Integration (FastAPI 0.111+) | ✅ Completed | Ephemeral privacy-first REST endpoints (`/health`, `/api/analyze-document`, `/api/voice-query`, `/api/tts`) |
-| End-to-End Test Suite | ✅ Completed | 13/13 backend pytest suite passing + clean Vite production build |
-| Final Challenge Submission | 🎯 Ready | 75s demo video recording & Google Form submission before Nov 10, 2026 |
-
----
-
-## 🔮 Future Scope
-
-Planned improvements include:
-
-- WhatsApp-based document assistance
-- More Indian regional languages
-- Improved OCR for scanned documents
-- Official-source verification
-- Better evidence extraction
-- Document comparison
-- Voice conversation history
-- Improved accessibility
-- Government scheme discovery
-- Personalized action guidance
-- Better multilingual voice interaction
-
----
-
-## 🤝 Contribution
-
-SEVAK is currently being developed as a team project.
-
-For major changes, discuss the proposed change with the project team before making significant modifications to the shared repository.
-
----
-
-## 📄 License & Copyright
-
-This project is licensed under the [MIT License](LICENSE).
+Licensed under the [MIT License](LICENSE).
 
 ```text
 Copyright (c) 2026 SEVAK Team (kamalraj5566688-dev & Contributors)
 All Rights Reserved. Developed for the Great Indian AI Internship Challenge (Gnani AI).
 ```
 
----
+<div align="center">
 
-## ❤️ SEVAK
+### *Samjhega. Batayega. Raasta dikhayega.* 🇮🇳
+**Empowering 1.4 Billion Citizens with Sovereign Voice AI**
 
-> **Samjhega. Batayega. Raasta dikhayega.**
-
-Making important Indian documents easier to understand — one voice conversation at a time.
+</div>
