@@ -1,5 +1,6 @@
-import React, { useRef } from 'react';
-import { ArrowRight, Cloud, Plus, Mic } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { ArrowRight, Cloud, Plus, Mic, AlertCircle } from 'lucide-react';
+import { validateFileMagicBytes } from '../utils/security';
 
 interface ActionButtonsProps {
   onFileSelect: (file: File) => void;
@@ -13,16 +14,52 @@ export const ActionButtons: React.FC<ActionButtonsProps> = ({
   isListening,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Mirrors UploadModal validation so both upload entry points behave the same.
+  const VALID_TYPES = [
+    'application/pdf',
+    'image/jpeg',
+    'image/jpg',
+    'image/png',
+    'image/webp',
+  ];
+  const MAX_SIZE = 10 * 1024 * 1024;
+
+  const clearError = () => setUploadError(null);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 8 * 1024 * 1024) {
-        alert('File size exceeds the 8 MB limit. Please select a smaller document.');
-        return;
-      }
-      onFileSelect(file);
+    if (!file) return;
+
+    clearError();
+
+    const hasValidExt = /\.(pdf|jpg|jpeg|png|webp)$/i.test(file.name);
+
+    if (!VALID_TYPES.includes(file.type) && !hasValidExt) {
+      setUploadError(
+        'Unsupported file type. Please upload a PDF, JPG, PNG, or WEBP document.'
+      );
+      return;
     }
+
+    // Client-side magic-byte verification (M-06).
+    const magicValid = await validateFileMagicBytes(file);
+    if (!magicValid) {
+      setUploadError(
+        'File content does not match its type. Please upload a valid document.'
+      );
+      return;
+    }
+
+    if (file.size > MAX_SIZE) {
+      setUploadError(
+        'File size exceeds the 10 MB limit. Please select a smaller document.'
+      );
+      return;
+    }
+
+    onFileSelect(file);
   };
 
   const handleUploadClick = () => {
@@ -46,7 +83,7 @@ export const ActionButtons: React.FC<ActionButtonsProps> = ({
         onClick={handleUploadClick}
         type="button"
         className="glossy-blue-button group relative flex-1 flex items-center justify-between px-5 sm:px-6 py-3.5 sm:py-4 rounded-full text-white cursor-pointer transition-all duration-200 active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
-        aria-label="Upload Document (PDF, JPG, PNG up to 8 MB)"
+        aria-label="Upload Document (PDF, JPG, PNG up to 10 MB)"
       >
         <div className="flex items-center gap-3.5">
           {/* Cloud Icon with Plus */}
@@ -63,7 +100,7 @@ export const ActionButtons: React.FC<ActionButtonsProps> = ({
               Upload Document
             </span>
             <span className="text-[11px] sm:text-[12px] text-blue-100/90 font-medium">
-              PDF, JPG, PNG up to 8 MB
+              PDF, JPG, PNG up to 10 MB
             </span>
           </div>
         </div>
@@ -110,6 +147,14 @@ export const ActionButtons: React.FC<ActionButtonsProps> = ({
           <ArrowRight className="w-5 h-5 text-[#542007]" strokeWidth={2.2} />
         </div>
       </button>
+
+      {/* Inline upload validation error (replaces alert() for a consistent UX)}} */}
+      {uploadError && (
+        <div className="w-full mt-2 p-3 bg-red-50 rounded-xl border border-red-200 flex items-start gap-2 text-xs sm:text-sm text-red-800">
+          <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+          <span>{uploadError}</span>
+        </div>
+      )}
     </div>
   );
 };

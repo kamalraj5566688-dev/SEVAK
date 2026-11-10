@@ -17,14 +17,20 @@ from __future__ import annotations
 
 import html
 import logging
-logger = logging.getLogger(__name__)
 import re
+import time
 import uuid
+from collections import OrderedDict
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
+from cryptography.fernet import Fernet
+
+logger = logging.getLogger(__name__)
+
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status, Security, Depends, Request
 from fastapi.responses import JSONResponse
+from fastapi.security import APIKeyHeader
 
 from app.config import settings
 from app.ai.grounding import (
@@ -61,8 +67,10 @@ timbre = TimbreTTSClient()
 
 # Short-lived in-memory document context for follow-up questions.
 # Documents are not persisted to a database.
-DOCUMENT_CONTEXT_STORE: dict[str, dict] = {}
-MAX_DOCUMENT_CONTEXTS = 20
+# LRU cache with 2-hour TTL, bounded at 100 entries.
+DOCUMENT_CONTEXT_STORE: "OrderedDict[str, dict]" = OrderedDict()
+MAX_DOCUMENT_CONTEXTS = 100
+DOCUMENT_CONTEXT_TTL_SECONDS = 2 * 60 * 60  # 2 hours
 
 # Allowed upload extensions / MIME types.
 ALLOWED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".webp"}
@@ -76,6 +84,78 @@ ALLOWED_MIME_TYPES = {
 
 MAX_FILE_SIZE = settings.MAX_FILE_SIZE_MB * 1024 * 1024
 
+# ---- Antivirus / Malware Scanning (H-03) ----
+# Known malicious file signatures / patterns to reject at upload time.
+# This is a first line of defense. Production deployments should integrate
+# ClamAV (clamscan) or a cloud AV API for full protection.
+MALWARE_SIGNATURES = [
+    # EICAR test string (standard AV test file)
+    b"X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*",
+    # Common script injection in PDFs/images
+    b"<script",
+    b"javascript:",
+    b"vbscript:",
+    b"onload=",
+    b"onerror=",
+    b"eval(",
+    b"cmd.exe",
+    b"/bin/sh",
+    b"powershell",
+]
+
+
+def scan_for_malware(content: bytes, filename: str) -> tuple[bool, str | None]:
+    """Scan uploaded file bytes for known malware signatures.
+
+    Returns (is_clean, threat_name). If is_clean is False, threat_name
+    describes the detected threat.
+    """
+    # 1. Signature-based scan of raw bytes.
+    lower = content.lower()
+    for sig in MALWARE_SIGNATURES:
+        if sig.lower() in lower:
+            return False, f"Malware signature detected: {sig.decode('latin-1', errors='ignore')[:40]}"
+
+    # 2. Extension-based double-check: executable extensions are never allowed.
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    dangerous_exts = {".exe", ".bat", ".cmd", ".com", ".scr", ".vbs", ".js", ".jar", ".sh", ".ps1"}
+    if f".{ext}" in dangerous_exts:
+        return False, f"Dangerous file extension: .{ext}"
+
+    # 3. Polyglot check: PDF claiming to be a script, etc.
+    if ext == "pdf" and content.startswith(b"%PDF-"):
+        # Check for embedded JavaScript in PDF (common attack vector)
+        if b"/JavaScript" in content or b"/JS" in content:
+            return False, "PDF contains embedded JavaScript (blocked)"
+
+    return True, None
+
+
+def sanitize_filename(filename: str) -> str:
+    """Sanitize an uploaded filename to prevent path traversal and injection (L-04).
+
+    Removes directory separators, null bytes, and other dangerous characters.
+    Falls back to a safe default if the result is empty.
+    """
+    if not filename:
+        return "uploaded_document"
+
+    # Remove path components and null bytes.
+    name = filename.replace("\x00", "")
+    name = re.sub(r"[\\/]+", "_", name)
+    # Keep only safe characters: alphanumeric, dots, dashes, underscores, spaces.
+    name = re.sub(r"[^A-Za-z0-9.\-_ ]+", "_", name).strip()
+    # Prevent hidden files and leading dots.
+    name = name.lstrip(".")
+    if not name or name in {".", ".."}:
+        return "uploaded_document"
+    # Limit length.
+    if len(name) > 200:
+        base, _, ext = name.rpartition(".")
+        name = base[:180] + ("." + ext if ext else "")
+    return name
+
+
 # Statutory safety-shield disclaimer injected into every analysis.
 SAFETY_DISCLAIMER = (
     "SEVAK is an AI document-assistant, not a lawyer. It explains clauses in "
@@ -84,9 +164,144 @@ SAFETY_DISCLAIMER = (
     "legal-aid clinic."
 )
 
+# ---- API Key Authentication (C-01) ----
+api_key_header = APIKeyHeader(name=settings.API_KEY_HEADER, auto_error=False)
 
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).astimezone().isoformat()
+
+async def verify_api_key(api_key: str = Security(api_key_header)) -> str | None:
+    """Validate the X-API-Key header on protected endpoints.
+
+    When SEVAK_API_KEY is configured, requests must present a matching key.
+    When SEVAK_API_KEY is empty (demo mode), access is allowed but a warning
+    is logged so operators are aware auth is not enforced.
+    """
+    if settings.SEVAK_API_KEY:
+        if not api_key or api_key != settings.SEVAK_API_KEY:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or missing API key.",
+            )
+    elif api_key:
+        logger.warning(
+            "API key provided but SEVAK_API_KEY is not configured; "
+            "authentication is disabled (demo mode)."
+        )
+    return api_key
+
+
+# ---- Rate Limiting (H-01) ----
+class _RateLimiter:
+    """Simple in-memory sliding-window rate limiter.
+
+    Tracks request timestamps per client key (API key or client host).
+    Not distributed: works for single-instance deployments. For multi-node,
+    replace with Redis-backed rate limiting.
+    """
+
+    def __init__(self, max_requests: int, window_seconds: int) -> None:
+        self.max_requests = max_requests
+        self.window_seconds = window_seconds
+        self._timestamps: dict[str, list[float]] = {}
+
+    def is_allowed(self, key: str) -> tuple[bool, int]:
+        """Return (allowed, retry_after_seconds)."""
+        now = time.time()
+        window_start = now - self.window_seconds
+
+        timestamps = self._timestamps.get(key, [])
+        # Prune expired entries.
+        timestamps = [t for t in timestamps if t > window_start]
+
+        if len(timestamps) >= self.max_requests:
+            retry_after = int(self.window_seconds - (now - timestamps[0])) + 1
+            self._timestamps[key] = timestamps
+            return False, max(retry_after, 1)
+
+        timestamps.append(now)
+        self._timestamps[key] = timestamps
+        return True, 0
+
+
+_rate_limiter = _RateLimiter(
+    max_requests=settings.RATE_LIMIT_REQUESTS,
+    window_seconds=settings.RATE_LIMIT_WINDOW_SECONDS,
+)
+
+
+def _client_key(request) -> str:
+    """Derive a rate-limit key from the request: API key if present, else client host."""
+    api_key = request.headers.get(settings.API_KEY_HEADER)
+    if api_key:
+        return f"apikey:{api_key}"
+    client = request.client
+    return f"ip:{client.host if client else 'unknown'}"
+
+
+async def rate_limit(request: Request) -> None:
+    """Dependency that enforces rate limiting on protected endpoints."""
+    key = _client_key(request)
+    allowed, retry_after = _rate_limiter.is_allowed(key)
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Rate limit exceeded. Try again in {retry_after} second(s).",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+
+# ---- Document Context Store Encryption + Access Control (H-05) ----
+import base64
+import hashlib
+
+# Derive a Fernet-compatible key from SEVAK_API_KEY (or a default for demo mode).
+_context_key_material = settings.SEVAK_API_KEY or "sevak-default-context-key-change-in-production"
+_context_key = base64.urlsafe_b64encode(hashlib.sha256(_context_key_material.encode()).digest())
+_context_cipher = Fernet(_context_key)
+
+
+def _encrypt_context(value: str) -> str:
+    """Encrypt a context string for storage."""
+    return _context_cipher.encrypt(value.encode()).decode()
+
+
+def _decrypt_context(token: str) -> str:
+    """Decrypt a stored context string."""
+    return _context_cipher.decrypt(token.encode()).decode()
+
+
+# Track which API key uploaded each document for access control.
+DOCUMENT_OWNER: dict[str, str] = {}
+
+
+def _record_document_owner(document_id: str, api_key: str | None) -> None:
+    """Record the API key that uploaded a document."""
+    DOCUMENT_OWNER[document_id] = api_key or "anonymous"
+
+
+def _check_document_access(document_id: str, api_key: str | None) -> bool:
+    """Check if the given API key can access the document context.
+
+    In demo mode (no API key), all access is allowed.
+    When auth is enabled, only the uploading API key can access.
+    """
+    if not settings.SEVAK_API_KEY:
+        return True  # Demo mode: no access restrictions
+    owner = DOCUMENT_OWNER.get(document_id)
+    if owner is None:
+        return False  # Document not found
+    return owner == (api_key or "anonymous")
+
+
+def _prune_expired_contexts() -> None:
+    """Remove entries older than DOCUMENT_CONTEXT_TTL_SECONDS from the store."""
+    now = time.time()
+    expired_keys = [
+        key
+        for key, value in DOCUMENT_CONTEXT_STORE.items()
+        if now - float(value.get("created_at_epoch", 0)) > DOCUMENT_CONTEXT_TTL_SECONDS
+    ]
+    for key in expired_keys:
+        DOCUMENT_CONTEXT_STORE.pop(key, None)
 
 
 def _format_size(size_bytes: int) -> str:
@@ -112,6 +327,8 @@ def _detect_category(text: str, model_doc_type: Optional[str] = None) -> tuple[C
         "motor vehicles act", "rc ", "registration certificate",
         "driving license", "driving licence", "dl no", "helmet",
         "speed limit", "puc ", "parivahan", "mparivahan",
+        # Devanagari / Hindi
+        "चालान", "ई-चालान", "यातायात", "हेलमेट",
     ]
     if any(k in lowered for k in traffic_keywords):
         return "Traffic Police Notice", 1.0
@@ -132,6 +349,8 @@ def _detect_category(text: str, model_doc_type: Optional[str] = None) -> tuple[C
         "section 139", "section 156", "section 271", "nefac",
         "faceless assessment", "cbdt", "central board of direct taxes",
         "pan card", "form 16", "itr-", "taxpayer", "142(1)", "148a",
+        # Devanagari / Hindi
+        "आयकर", "निर्धारण वर्ष", "धारा 148", "पैन",
     ]
     if any(k in lowered for k in itd_keywords):
         return "Income Tax Department", 1.0
@@ -145,6 +364,8 @@ def _detect_category(text: str, model_doc_type: Optional[str] = None) -> tuple[C
         "drt", "nclt", "plaintiff", "defendant", "petitioner", "respondent",
         "vakalatnama", "in the court of", "police station", "fir no",
         "crpc", "ipc", "bns", "bnss", "cheque bounce",
+        # Devanagari / Hindi
+        "समन", "न्यायालय", "अदालत", "गैर-जमानती", "वकालतनामा",
     ]
     if any(k in lowered for k in legal_keywords):
         return "Legal Summons", 1.0
@@ -157,6 +378,8 @@ def _detect_category(text: str, model_doc_type: Optional[str] = None) -> tuple[C
         "non-performing asset", "sarfaesi", "section 13(2)", "section 13(4)",
         "debt recovery", "credit card", "upi", "bank account",
         "savings account", "overdue balance", "credit limit",
+        # Devanagari / Hindi
+        "बैंक", "ऋण", "खाता", "बचत खाता", "पुनः केवाईसी",
     ]
     if any(k in lowered for k in banking_keywords):
         return "Banking & KYC", 1.0
@@ -789,14 +1012,19 @@ def _local_document_analysis(
         citations=citations,
         spoken_summary_regional=" ".join(spoken),
     )
-@router.post("/api/analyze-document", tags=["analysis"])
+@router.post(
+    "/api/analyze-document",
+    tags=["analysis"],
+    dependencies=[Security(verify_api_key), Depends(rate_limit)],
+)
 async def analyze_document(
     document: UploadFile = File(...),
     language: str = Form("hinglish"),
+    api_key: str = Security(verify_api_key),
 ) -> SevakApiResponse:
     """Analyze an uploaded PDF or image document end-to-end."""
     # ---- Validate file type & size -------------------------------------
-    filename = document.filename or "uploaded_document"
+    filename = sanitize_filename(document.filename or "uploaded_document")
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
 
     if f".{ext}" not in ALLOWED_EXTENSIONS:
@@ -809,7 +1037,7 @@ async def analyze_document(
 
     if len(content) > MAX_FILE_SIZE:
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail=f"File size exceeds the {settings.MAX_FILE_SIZE_MB} MB limit.",
         )
 
@@ -817,6 +1045,20 @@ async def analyze_document(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Uploaded file is empty.",
+        )
+
+    # ---- Antivirus / Malware Scan (H-03) ----
+    is_clean, threat = scan_for_malware(content, filename)
+    if not is_clean:
+        logger.warning(
+            "[SEVAK][MALWARE] Rejected upload: filename=%r threat=%r size=%d",
+            filename,
+            threat,
+            len(content),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File rejected: {threat}.",
         )
 
     # Validate the actual file signature instead of trusting MIME metadata.
@@ -929,13 +1171,19 @@ async def analyze_document(
     grounded_context = build_grounded_context(chunks)
 
     if grounded_context:
+        encrypted_context = _encrypt_context(grounded_context)
         DOCUMENT_CONTEXT_STORE[document_id] = {
-            "grounded_context": grounded_context,
+            "grounded_context": encrypted_context,
             "created_at": _now_iso(),
+            "created_at_epoch": time.time(),
             "filename": filename,
         }
+        _record_document_owner(document_id, api_key)
+        # Mark as most-recently-used (LRU ordering).
+        DOCUMENT_CONTEXT_STORE.move_to_end(document_id, last=True)
 
-        # Keep memory bounded on this lightweight deployment.
+        # Prune expired entries first, then enforce LRU capacity.
+        _prune_expired_contexts()
         while len(DOCUMENT_CONTEXT_STORE) > MAX_DOCUMENT_CONTEXTS:
             oldest_id = next(iter(DOCUMENT_CONTEXT_STORE))
             DOCUMENT_CONTEXT_STORE.pop(oldest_id, None)
@@ -968,7 +1216,11 @@ async def analyze_document(
     return response
 
 
-@router.post("/api/voice/transcribe", tags=["voice"])
+@router.post(
+    "/api/voice/transcribe",
+    tags=["voice"],
+    dependencies=[Security(verify_api_key), Depends(rate_limit)],
+)
 async def transcribe_audio(
     audio: UploadFile = File(...),
     language: str = Form("auto"),
@@ -1493,8 +1745,15 @@ async def _answer_from_evon(
     )
 
 
-@router.post("/api/ask", tags=["voice"])
-async def ask_question(payload: dict) -> dict:
+@router.post(
+    "/api/ask",
+    tags=["voice"],
+    dependencies=[Security(verify_api_key), Depends(rate_limit)],
+)
+async def ask_question(
+    payload: dict,
+    api_key: str = Security(verify_api_key),
+) -> dict:
     """Answer a follow-up question using the uploaded document context."""
     question = payload.get("question", "")
     document_id = payload.get("documentId") or payload.get("document_id")
@@ -1524,7 +1783,29 @@ async def ask_question(payload: dict) -> dict:
         )
 
         if stored:
-            context = stored.get("grounded_context")
+            # Access control: only the uploading API key can access this context.
+            if not _check_document_access(str(document_id), api_key):
+                logger.warning(
+                    "[SEVAK][ASK_CONTEXT] Access denied for document_id=%r api_key=%r",
+                    document_id,
+                    api_key,
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied to this document context.",
+                )
+
+            # Mark as most-recently-used on access (LRU ordering).
+            DOCUMENT_CONTEXT_STORE.move_to_end(str(document_id), last=True)
+            encrypted_context = stored.get("grounded_context")
+            try:
+                context = _decrypt_context(encrypted_context)
+            except Exception:
+                logger.warning(
+                    "[SEVAK][ASK_CONTEXT] Failed to decrypt context for document_id=%r",
+                    document_id,
+                )
+                context = None
 
             logger.info(
                 "[SEVAK][ASK_CONTEXT] grounded_context_found=%s context_length=%d",
@@ -1558,13 +1839,21 @@ async def ask_question(payload: dict) -> dict:
     }
 
 
-@router.post("/api/voice-query", tags=["voice"])
+@router.post(
+    "/api/voice-query",
+    tags=["voice"],
+    dependencies=[Security(verify_api_key), Depends(rate_limit)],
+)
 async def voice_query(payload: dict) -> dict:
     """Alias for /api/ask (matches the task-spec endpoint name)."""
     return await ask_question(payload)
 
 
-@router.post("/api/tts", tags=["voice"])
+@router.post(
+    "/api/tts",
+    tags=["voice"],
+    dependencies=[Security(verify_api_key), Depends(rate_limit)],
+)
 async def synthesize_tts(payload: dict) -> dict:
     """Synthesize text into speech audio via Gnani Timbre."""
     text = payload.get("text", "")

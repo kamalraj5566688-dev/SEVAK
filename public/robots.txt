@@ -12,4 +12,4 @@ Disallow: /voice
 Disallow: /__vite__
 
 # Sitemap location
-Sitemap: https://sevak.example.com/sitemap.xml
+Sitemap: https://kamalraj5566688-dev.github.io/SEVAK/sitemap.xml

@@ -2,6 +2,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Mic, MicOff, X, Volume2, Sparkles, AlertCircle, ArrowRight } from 'lucide-react';
 import { SupportedLanguage } from '../types';
 import { SevakApiService } from '../services/api';
+import { debugLog, debugError, debugWarn } from '../utils/security';
+
+/** Strip PDF cid glyph artifacts (e.g. "(cid:10)", "(cid:127)") from display text. */
+const stripCids = (value: unknown): string => {
+  if (value === null || value === undefined) return '';
+  return String(value).replace(/\(cid:\d+\)/g, ' ').replace(/\s+/g, ' ').trim();
+};
 
 interface VoiceModalProps {
   isOpen: boolean;
@@ -416,7 +423,7 @@ const audioContextRef = useRef<any>(null);
       setErrorMessage(
         'Microphone ke liye localhost use karein: http://localhost:3000/'
       );
-      console.error('[SEVAK][VOICE] Insecure context:', window.location.href);
+      debugError('[SEVAK][VOICE] Insecure context - use localhost');
       return;
     }
 
@@ -570,7 +577,7 @@ const audioContextRef = useRef<any>(null);
               selectedLanguage
             );
 
-          console.log(
+          debugLog(
             '[SEVAK][VOICE] Prisma transcript:',
             finalTranscript
           );
@@ -598,7 +605,7 @@ const audioContextRef = useRef<any>(null);
 
           setErrorMessage('✨ Answer prepare ho raha hai...');
 
-          console.log('[SEVAK][VOICE] Sending question:', {
+          debugLog('[SEVAK][VOICE] Sending question:', {
             question: currentVoiceQuestion,
             documentId: currentDocumentId,
             language: selectedLanguage,
@@ -846,7 +853,7 @@ const audioContextRef = useRef<any>(null);
     setErrorMessage('✨ Answer prepare ho raha hai...');
 
     try {
-      console.log('[SEVAK][VOICE] Processing quick question:', {
+      debugLog('[SEVAK][VOICE] Processing quick question:', {
         question: text,
         documentId: currentDocumentId,
         language: selectedLanguage,
@@ -862,7 +869,7 @@ const audioContextRef = useRef<any>(null);
         throw new Error('SEVAK ne empty answer return kiya.');
       }
 
-      console.log('[SEVAK][VOICE] Quick question answer:', answer);
+      debugLog('[SEVAK][VOICE] Quick question answer:', answer);
 
       setSevakAnswer(answer);
       speakAnswer(answer);
@@ -1009,7 +1016,7 @@ const audioContextRef = useRef<any>(null);
               </button>
             </div>
             <p className="text-sm text-slate-800 leading-relaxed font-medium">
-              {sevakAnswer}
+              {stripCids(sevakAnswer)}
             </p>
           </div>
         )}

@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     # Gnani AI credentials
     GNANI_API_KEY: str = ""
     GNANI_PRISMA_ENDPOINT: str = "https://api.vachana.ai/stt/v3"
-    GNANI_TIMBRE_ENDPOINT: str = "https://api.gnani.ai/v1/tts"
+    GNANI_TIMBRE_ENDPOINT: str = "https://api.vachana.ai/api/v1/tts/inference"
 
     # Hugging Face Dedicated Inference Endpoint or Serverless Model ID (Evon 30B)
     HF_TOKEN: str = ""
@@ -30,6 +30,15 @@ class Settings(BaseSettings):
 
     # CORS (can be JSON array or comma-separated string in .env)
     CORS_ORIGINS: Union[List[str], str] = ["http://localhost:3000", "http://localhost:5173"]
+
+    # API authentication
+    SEVAK_API_KEY: str = ""
+    API_KEY_REQUIRED: bool = False
+    API_KEY_HEADER: str = "X-API-Key"
+
+    # Rate limiting
+    RATE_LIMIT_REQUESTS: int = 60
+    RATE_LIMIT_WINDOW_SECONDS: int = 60
 
     # Upload limits
     MAX_FILE_SIZE_MB: int = 10

@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Upload, X, FileText, AlertCircle, Sparkles, ShieldAlert, FileCheck } from 'lucide-react';
 import { SAMPLE_DOCUMENTS } from '../data/sampleDocuments';
 import { SevakAnalysisResult } from '../types';
+import { validateFileMagicBytes } from '../utils/security';
 
 interface UploadModalProps {
   isOpen: boolean;
@@ -22,7 +23,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
 
   if (!isOpen) return null;
 
-  const validateAndProceed = (file: File) => {
+  const validateAndProceed = async (file: File) => {
     setError(null);
     const validTypes = [
       'application/pdf',
@@ -39,8 +40,15 @@ export const UploadModal: React.FC<UploadModalProps> = ({
       return;
     }
 
-    if (file.size > 8 * 1024 * 1024) {
-      setError('File size exceeds the 8 MB limit. Please compress or select a smaller document.');
+    // Client-side magic-byte verification (M-06).
+    const magicValid = await validateFileMagicBytes(file);
+    if (!magicValid) {
+      setError('File content does not match its type. Please upload a valid document.');
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      setError('File size exceeds the 10 MB limit. Please compress or select a smaller document.');
       return;
     }
 
@@ -57,12 +65,12 @@ export const UploadModal: React.FC<UploadModalProps> = ({
     setIsDragging(false);
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
     const file = e.dataTransfer.files?.[0];
     if (file) {
-      validateAndProceed(file);
+      await validateAndProceed(file);
     }
   };
 
@@ -92,7 +100,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
               Upload Document for SEVAK
             </h3>
             <p className="text-xs text-slate-600">
-              PDF, JPG, PNG up to 8 MB
+              PDF, JPG, PNG up to 10 MB
             </p>
           </div>
         </div>
@@ -132,7 +140,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
           </p>
 
           <span className="mt-3 inline-block text-[11px] font-semibold text-slate-400 bg-slate-100 px-3 py-1 rounded-full">
-            Max 8 MB • PDF, PNG, JPG, WEBP
+            Max 10 MB • PDF, PNG, JPG, WEBP
           </span>
         </div>
 
