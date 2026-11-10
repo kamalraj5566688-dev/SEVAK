@@ -418,6 +418,9 @@ def _split_title_description(text: str) -> tuple[str, str]:
     return text, ""
 
 
+def _now_iso() -> str:
+    """Return the current local time as an ISO-8601 timestamp."""
+    return datetime.now().astimezone().isoformat()
 def _extract_reference_number(text: str) -> Optional[str]:
     """Extract a real reference number, notice number, challan ID, PAN, or account number.
 
@@ -1878,12 +1881,3 @@ async def synthesize_tts(payload: dict) -> dict:
         "audio_format": result["audio_format"],
         "duration_seconds": result["duration_seconds"],
     }
-
-
-
-
-
-
-
-
-
