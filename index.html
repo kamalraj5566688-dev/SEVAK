@@ -36,7 +36,7 @@
   <body class="bg-[#FAF7F0] text-slate-800 antialiased selection:bg-orange-200 selection:text-orange-950 min-h-screen">
     <div id="root"></div>
 
-    {/* Force HTTPS in production (best-effort; HSTS should also be set at the server/CDN level). */}
+    <!-- Force HTTPS in production (best-effort; HSTS should also be set at the server/CDN level). -->
     <script>
       (function () {
         if (location.protocol === 'http:' && !location.hostname.includes('localhost') && !location.hostname.includes('127.0.0.1')) {
@@ -45,7 +45,7 @@
       })();
     </script>
 
-    {/* Analytics (Plausible). Replace VITE_PLAUSIBLE_DOMAIN with your domain and enable via env. */}
+    <!-- Analytics (Plausible). Replace VITE_PLAUSIBLE_DOMAIN with your domain and enable via env. -->
     <script type="module">
       (function () {
         var domain = import.meta.env?.VITE_PLAUSIBLE_DOMAIN;
@@ -61,7 +61,7 @@
       })();
     </script>
 
-    {/* Error monitoring (Sentry). Configure VITE_SENTRY_DSN to enable. */}
+    <!-- Error monitoring (Sentry). Configure VITE_SENTRY_DSN to enable. -->
     <script type="module">
       (function () {
         var dsn = import.meta.env?.VITE_SENTRY_DSN;
@@ -89,3 +89,4 @@
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
+

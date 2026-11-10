@@ -15,6 +15,9 @@ request. No database or persistent storage is used.
 
 from __future__ import annotations
 
+import html
+import logging
+logger = logging.getLogger(__name__)
 import re
 import uuid
 from datetime import datetime, timezone
@@ -114,6 +117,15 @@ def _detect_category(text: str, model_doc_type: Optional[str] = None) -> tuple[C
         return "Traffic Police Notice", 1.0
 
     # 2. Income Tax Department Notices
+    # 2. Municipal / Property Tax Notices
+    property_tax_keywords = [
+        "property tax", "municipal property tax", "municipal tax",
+        "property id", "municipal commissioner", "municipal corporation",
+        "nagar nigam", "municipal area", "property tax department",
+    ]
+    if any(k in lowered for k in property_tax_keywords):
+        return "Government Notice", 0.98
+
     itd_keywords = [
         "income tax", "income-tax", "incometax", "itd", "assessment year",
         "ay 20", "ay 19", "section 148", "section 143", "section 142",
@@ -184,22 +196,71 @@ def _split_title_description(text: str) -> tuple[str, str]:
 
 
 def _extract_reference_number(text: str) -> Optional[str]:
-    """Extract a real reference number, challan ID, PAN, or account number."""
-    patterns = [
-        r"(?:Challan|Notice|Ref|Reference|PAN|Loan\s+A\/c|Case)\s*(?:No\.?|Number)?\s*[:\-]\s*([A-Za-z0-9./_\-]+)",
-        r"\b([A-Z]{4,5}[0-9]{4}[A-Z])\b",  # Indian PAN format
-        r"\b([A-Z]{2}[0-9]{1,2}[A-Z]{0,2}[0-9]{4})\b",  # Vehicle Reg / Challan format
-        r"(?:Memo\s+No|Order\s+No)\s*[:\-]\s*([A-Za-z0-9./_\-]+)",
+    """Extract a real reference number, notice number, challan ID, PAN, or account number.
+
+    The extractor intentionally prefers explicit labelled identifiers and then
+    falls back to common structured reference-number formats such as
+    PTX/2026/01482.
+    """
+    if not text:
+        return None
+
+    # Normalize HTML entities and whitespace before matching.
+    normalized = html.unescape(str(text))
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+
+    # 1. Explicitly labelled reference/notice identifiers.
+    labelled_patterns = [
+        r"(?:Challan|Notice|Ref(?:erence)?|Memo|Order|Case|Application|"
+        r"Transaction|Property\s+ID|Property\s+No|Account|A/C)"
+        r"\s*(?:No\.?|Number|ID)?\s*[:#\-]?\s*"
+        r"([A-Za-z0-9][A-Za-z0-9./_-]{3,})",
+
+        r"\b(?:PTX|PTAX)[/\-]\d{4}[/\-]\d{3,8}\b",
     ]
-    for pattern in patterns:
-        m = re.search(pattern, text, re.IGNORECASE)
-        if m:
-            val = m.group(1).strip()
-            if len(val) >= 4:
-                return val
+
+    for pattern in labelled_patterns:
+        match = re.search(pattern, normalized, re.IGNORECASE)
+        if match:
+            # For the PTX/PTAX pattern there is no capture group.
+            value = match.group(1) if match.lastindex else match.group(0)
+            value = value.strip(" .,:;()[]{}")
+
+            if len(value) >= 4:
+                return value
+
+    # 2. Structured government/property reference formats.
+    structured_patterns = [
+        r"\b[A-Z]{2,6}/\d{4}/\d{3,8}\b",
+        r"\b[A-Z]{2,6}-\d{4}-\d{3,8}\b",
+        r"\b[A-Z]{2,6}\d{4,8}\b",
+    ]
+
+    for pattern in structured_patterns:
+        match = re.search(pattern, normalized, re.IGNORECASE)
+        if match:
+            value = match.group(0).strip()
+            if len(value) >= 4:
+                return value
+
+    # 3. PAN-like identifier.
+    match = re.search(r"\b[A-Z]{5}[0-9]{4}[A-Z]\b", normalized, re.IGNORECASE)
+    if match:
+        return match.group(0).upper()
+
+    # 4. Existing generic alphanumeric identifier fallback.
+    generic_patterns = [
+        r"\b([A-Z]{2}[0-9]{1,2}[A-Z]{0,2}[0-9]{4})\b",
+    ]
+
+    for pattern in generic_patterns:
+        match = re.search(pattern, normalized, re.IGNORECASE)
+        if match:
+            value = match.group(1).strip()
+            if len(value) >= 4:
+                return value
+
     return None
-
-
 def _get_official_portal_url(category: Category) -> Optional[str]:
     """Provide verified official portals for immediate citizen action."""
     portals = {
@@ -235,10 +296,14 @@ def _map_evon_to_response(
         "Income Tax Department": "Income Tax Department (ITD), Ministry of Finance",
         "Banking & KYC": "Bank / Lending Institution",
         "Legal Summons": "Judicial Magistrate / Civil Court",
-        "Government Notice": "Competent Government Authority",
+        "Government Notice": "Municipal / Competent Government Authority",
         "Unrecognized / Not a Document": "Competent Authority",
     }
     issuing_authority = authority_defaults.get(category, "Competent Authority")
+    # Prefer the exact departmental authority explicitly present in the document.
+    authority_source_text = evon.what + " " + document_text
+    if re.search(r"\bmunicipal\s+property\s+tax\s+department\b", authority_source_text, re.IGNORECASE):
+        issuing_authority = "Municipal Property Tax Department"
 
     m_auth = re.search(r"(?:issued by|issuing authority|authority)[:\-]\s*([^.\n]+)", evon.what + " " + document_text, re.IGNORECASE)
     if m_auth:
@@ -253,11 +318,27 @@ def _map_evon_to_response(
         legal_section = f"Section {m_section.group(1).strip()}"
 
     # Real reference number extraction from document text, or fall back to SEVAK ID
-    extracted_ref = _extract_reference_number(document_text) or _extract_reference_number(evon.what)
-    reference_number = extracted_ref or f"SEVAK-{uuid.uuid4().hex[:8].upper()}"
-
+    # Use only a reference number actually present in the uploaded document.
+    extracted_ref = _extract_reference_number(document_text)
+    if extracted_ref:
+        reference_number = html.unescape(str(extracted_ref)).strip()
+    else:
+        reference_number = "Not specified in document"
     # Official verification portal
     official_portal_url = _get_official_portal_url(category)
+    # Do not attach a generic government portal to a fictional/sample document.
+    is_sample_document = any(
+        marker in document_text.lower()
+        for marker in [
+            "sample notice",
+            "sample test copy",
+            "not a real government document",
+            "fictional",
+            "demo analysis mode",
+            "test copy",
+        ]
+    )
+    official_portal_url = None if is_sample_document else _get_official_portal_url(category)
 
     # Deadlines block.
     deadline_items = evon.deadlines or []
@@ -424,19 +505,32 @@ def _local_document_analysis(
     ])
 
     amount = first_match([
-        r"(?:Rs\.?|INR|₹)\s*([0-9][0-9,]*(?:\.[0-9]+)?)",
+        r"(?:Rs\.?|INR|₹|[nN])\s*([0-9][0-9,]*(?:\.[0-9]+)?)",
         r"amount\s+(?:of|is)\s+(?:Rs\.?|INR|₹)?\s*([0-9][0-9,]*(?:\.[0-9]+)?)",
     ])
 
+    # Explicit deadline date takes priority.
+    # Example: "Payment Deadline: 23 November 2026"
+    explicit_deadline_date = first_match([
+        r"(?:Payment|Response|Compliance|Due)\s+Deadline\s*:\s*"
+        r"([A-Za-z]+\s+[0-9]{1,2},?\s+[0-9]{4})",
+        r"(?:Payment|Response|Compliance|Due)\s+Deadline\s*:\s*"
+        r"([0-9]{1,2}\s+[A-Za-z]+\s+[0-9]{4})",
+        r"(?:Payment|Response|Compliance|Due)\s+Deadline\s*:\s*"
+        r"([0-9]{1,2}[/-][0-9]{1,2}[/-][0-9]{2,4})",
+    ])
+
+    # Relative deadline, e.g. "within 15 days".
     deadline = first_match([
         r"\bwithin\s+(\d+\s+(?:days?|weeks?|months?))\b",
         r"\bwithin\s+(\d+)\s+(days?|weeks?|months?)\b",
     ])
 
+    # Document issue date. Supports both "Date:" and "Issue Date:".
     date_value = first_match([
-        r"\bDate\s*:\s*([0-9]{1,2}[/-][0-9]{1,2}[/-][0-9]{2,4})",
-        r"\bDate\s*:\s*([A-Za-z]+\s+[0-9]{1,2},?\s+[0-9]{4})",
-        r"\bDate\s*:\s*([0-9]{1,2}\s+[A-Za-z]+\s+[0-9]{4})",
+        r"\b(?:Issue\s+)?Date\s*:\s*([0-9]{1,2}[/-][0-9]{1,2}[/-][0-9]{2,4})",
+        r"\b(?:Issue\s+)?Date\s*:\s*([A-Za-z]+\s+[0-9]{1,2},?\s+[0-9]{4})",
+        r"\b(?:Issue\s+)?Date\s*:\s*([0-9]{1,2}\s+[A-Za-z]+\s+[0-9]{4})",
     ])
 
     reference = first_match([
@@ -448,7 +542,38 @@ def _local_document_analysis(
     deadline_date = None
     days_left = None
 
-    if deadline and date_value:
+    # 1. Use an explicitly stated deadline date.
+    if explicit_deadline_date:
+        parsed_deadline = None
+
+        for fmt in (
+            "%d %B %Y",
+            "%d %b %Y",
+            "%B %d %Y",
+            "%b %d %Y",
+            "%d/%m/%Y",
+            "%d-%m-%Y",
+            "%d/%m/%y",
+            "%d-%m-%y",
+        ):
+            try:
+                parsed_deadline = datetime.strptime(
+                    explicit_deadline_date.replace(",", ""),
+                    fmt,
+                )
+                break
+            except ValueError:
+                continue
+
+        if parsed_deadline:
+            deadline_date = parsed_deadline
+            deadline = explicit_deadline_date
+            days_left = (
+                deadline_date.date() - datetime.now().date()
+            ).days
+
+    # 2. Otherwise calculate it from a relative period.
+    elif deadline and date_value:
         deadline_match = re.search(
             r"(\d+)\s+(days?|weeks?|months?)",
             deadline,
@@ -488,7 +613,9 @@ def _local_document_analysis(
                 elif unit.startswith("month"):
                     deadline_date = parsed_date + timedelta(days=count * 30)
 
-                days_left = (deadline_date.date() - datetime.now().date()).days
+                days_left = (
+                    deadline_date.date() - datetime.now().date()
+                ).days
 
     # Dynamic severity determination
     lowered = text.lower()
@@ -516,8 +643,16 @@ def _local_document_analysis(
         )
 
     # Document type inference
-    doc_type = "Official Notice"
-    if any(k in lowered for k in ["challan", "traffic", "over-speeding"]):
+    is_sample_document = any(k in lowered for k in [
+        "sample notice", "sample test copy", "not a real government document",
+        "fictional", "demo analysis mode", "test copy",
+    ])
+
+    if is_sample_document and any(k in lowered for k in ["property tax", "municipal property tax"]):
+        doc_type = "Sample Municipal Property Tax Notice"
+    elif any(k in lowered for k in ["property tax", "municipal property tax", "property id", "municipal commissioner"]):
+        doc_type = "Municipal Property Tax Notice"
+    elif any(k in lowered for k in ["challan", "traffic", "over-speeding"]):
         doc_type = "Traffic Police Notice / E-Challan"
     elif any(k in lowered for k in ["income tax", "section 148", "itd"]):
         doc_type = "Income Tax Notice"
@@ -525,6 +660,8 @@ def _local_document_analysis(
         doc_type = "Court Summons / Legal Notice"
     elif any(k in lowered for k in ["loan", "sarfaesi", "kyc", "bank"]):
         doc_type = "Banking / Financial Notice"
+    else:
+        doc_type = "Government Notice"
 
     facts = []
     if subject:
@@ -551,17 +688,17 @@ def _local_document_analysis(
 
     if amount and deadline:
         why = (
-            f"The document explicitly mentions an amount of Rs. {amount} "
+            f"The document explicitly mentions an amount of {chr(0x20B9)}{amount} "
             f"and a payment/response period of {deadline}."
         )
     elif deadline:
         why = (
             f"The document explicitly states a time period of {deadline}, "
-            "which must be respected to avoid further action."
+            "which should be checked against the original document."
         )
     elif amount:
         why = (
-            f"The document explicitly mentions an amount of Rs. {amount}. "
+            f"The document explicitly mentions an amount of {chr(0x20B9)}{amount}. "
             "The original document should be checked before taking action."
         )
     else:
@@ -586,11 +723,16 @@ def _local_document_analysis(
             "Read the complete notice and verify any action requirement."
         )
 
-    second_step = (
-        f"Verify the amount of Rs. {amount} on the official government or bank portal."
-        if amount
-        else "Check the reference number and dates on the official issuing portal."
-    )
+    if is_sample_document:
+        second_step = (
+            "Do not make a payment based on this sample. "
+            "Verify that SEVAK correctly extracted the amount, "
+            "deadline, and stated consequence."
+        )
+    else:
+        second_step = (
+            "Check the reference number and dates on the official issuing portal."
+        )
 
     third_step = (
         "Consult a qualified professional or use the official helpline before making payments."
@@ -656,22 +798,47 @@ async def analyze_document(
     # ---- Validate file type & size -------------------------------------
     filename = document.filename or "uploaded_document"
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-    if f".{ext}" not in ALLOWED_EXTENSIONS or (document.content_type or "") not in ALLOWED_MIME_TYPES:
+
+    if f".{ext}" not in ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail="Unsupported file type. Please upload a PDF, PNG, JPG, or WEBP document.",
         )
 
     content = await document.read()
+
     if len(content) > MAX_FILE_SIZE:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=f"File size exceeds the {settings.MAX_FILE_SIZE_MB} MB limit.",
         )
+
     if not content:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Uploaded file is empty.",
+        )
+
+    # Validate the actual file signature instead of trusting MIME metadata.
+    signature_valid = False
+
+    if ext == "pdf":
+        signature_valid = content.startswith(b"%PDF-")
+    elif ext == "png":
+        signature_valid = content.startswith(b"\x89PNG\r\n\x1a\n")
+    elif ext in {"jpg", "jpeg"}:
+        signature_valid = content.startswith(b"\xff\xd8\xff")
+    elif ext == "webp":
+        signature_valid = (
+            len(content) >= 12
+            and content[:4] == b"RIFF"
+            and content[8:12] == b"WEBP"
+        )
+
+    if not signature_valid:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="File content does not match its extension.",
         )
 
     # ---- Extract text chunks (ephemeral, in-memory) --------------------
@@ -693,6 +860,14 @@ async def analyze_document(
         document_text = ""
         chunks = []
 
+    # ---- OCR / extracted-text normalization -----------------------------
+    # OCR may misread the Indian Rupee symbol (₹) as "n" or "N".
+    # Example: n12,500 -> ₹12,500.
+    document_text = re.sub(
+        r"(?<![A-Za-z])(?:n|N)(?=\s*\d[\d,]*(?:\.[0-9]+)?)",
+        "₹",
+        document_text,
+    )
     # ---- Average chunk confidence --------------------------------------
     avg_confidence = (
         sum(c.confidence_score for c in chunks) / len(chunks) if chunks else 0.5
@@ -1196,6 +1371,9 @@ async def _answer_from_evon(
         "ai reasoning service",
         "service abhi available nahi hai",
         "service abhi unavailable hai",
+        "bina relevant document evidence",
+        "document upload kijiye",
+        "relevant document evidence ke basis par",
     ]
 
     try:
@@ -1236,11 +1414,38 @@ async def ask_question(payload: dict) -> dict:
 
     context = None
 
+    logger.info(
+        "[SEVAK][ASK_CONTEXT] question=%r document_id=%r store_size=%d",
+        str(question)[:120],
+        document_id,
+        len(DOCUMENT_CONTEXT_STORE),
+    )
+
     if document_id:
         stored = DOCUMENT_CONTEXT_STORE.get(str(document_id))
 
+        logger.info(
+            "[SEVAK][ASK_CONTEXT] document_id_found=%s",
+            bool(stored),
+        )
+
         if stored:
             context = stored.get("grounded_context")
+
+            logger.info(
+                "[SEVAK][ASK_CONTEXT] grounded_context_found=%s context_length=%d",
+                bool(context),
+                len(context or ""),
+            )
+        else:
+            logger.warning(
+                "[SEVAK][ASK_CONTEXT] document_id=%r NOT FOUND in DOCUMENT_CONTEXT_STORE",
+                document_id,
+            )
+    else:
+        logger.warning(
+            "[SEVAK][ASK_CONTEXT] NO document_id received from frontend"
+        )
 
     try:
         answer = await _answer_from_evon(
@@ -1290,6 +1495,10 @@ async def synthesize_tts(payload: dict) -> dict:
         "audio_format": result["audio_format"],
         "duration_seconds": result["duration_seconds"],
     }
+
+
+
+
 
 
 

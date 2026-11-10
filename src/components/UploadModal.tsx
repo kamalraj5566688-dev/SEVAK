@@ -148,7 +148,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
         <div className="mt-6 pt-4 border-t border-slate-200">
           <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5 mb-2 font-display">
             <Sparkles className="w-3.5 h-3.5 text-orange-500" />
-            Ya sample Indian notice ke saath test karein:
+            Demo sample documents — real upload se alag:
           </span>
 
           <div className="space-y-2">
@@ -226,3 +226,5 @@ export const UploadModal: React.FC<UploadModalProps> = ({
     </div>
   );
 };
+
+

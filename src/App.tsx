@@ -29,14 +29,26 @@ export default function App() {
   // File Upload flow
   const handleFileSelect = async (file: File) => {
     setSelectedFile(file);
+    setAnalysisResult(null);
     setView('analyzing');
 
     try {
-      const result = await SevakApiService.analyzeDocument(file, selectedLanguage);
+      const result = await SevakApiService.analyzeDocument(
+        file,
+        selectedLanguage
+      );
+
+      // Preserve the actual uploaded filename.
+      result.originalFileName = file.name;
+
+      // Real uploads are not demo documents.
+      // Demo mode remains available through explicit sample buttons.
+      result.isDemoFallback = false;
+
       setAnalysisResult(result);
     } catch (err) {
-      console.error('Analysis failed, using fallback:', err);
-      setAnalysisResult(SAMPLE_DOCUMENTS.echallan);
+      console.error('Document analysis failed:', err);
+      setAnalysisResult(null);
     }
   };
 
@@ -47,10 +59,12 @@ export default function App() {
   };
 
   const handleAnalysisComplete = () => {
-    // If analysis hasn't resolved yet, guarantee sample result
     if (!analysisResult) {
-      setAnalysisResult(SAMPLE_DOCUMENTS.echallan);
+      console.error('Analysis completed without a result.');
+      setView('home');
+      return;
     }
+
     setView('results');
   };
 
@@ -166,5 +180,14 @@ export default function App() {
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
 
 

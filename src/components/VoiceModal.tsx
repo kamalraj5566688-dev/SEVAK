@@ -717,23 +717,6 @@ const audioContextRef = useRef<any>(null);
     cleanupMediaStream();
     setIsListening(false);
   };
-  const handleProcessQuestion = async (text: string) => {
-    if (!text.trim()) return;
-    setIsProcessing(true);
-    try {
-      const answer = await SevakApiService.askQuestion({
-        question: text,
-        documentId: currentDocumentId,
-        language: selectedLanguage,
-      });
-      setSevakAnswer(answer);
-      speakAnswer(answer);
-    } catch {
-      setSevakAnswer('SEVAK samajh raha hai. Kripya apna document upload karein taaki hum exact sections explain kar sakein.');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
 
   const speakAnswer = (text: string) => {
     if (!window.speechSynthesis || !text.trim()) {
@@ -856,6 +839,52 @@ const audioContextRef = useRef<any>(null);
     }
   };
 
+  const handleProcessQuestion = async (text: string) => {
+    if (!text.trim()) return;
+
+    setIsProcessing(true);
+    setErrorMessage('✨ Answer prepare ho raha hai...');
+
+    try {
+      console.log('[SEVAK][VOICE] Processing quick question:', {
+        question: text,
+        documentId: currentDocumentId,
+        language: selectedLanguage,
+      });
+
+      const answer = await SevakApiService.askQuestion({
+        question: text,
+        documentId: currentDocumentId,
+        language: selectedLanguage,
+      });
+
+      if (!answer || !answer.trim()) {
+        throw new Error('SEVAK ne empty answer return kiya.');
+      }
+
+      console.log('[SEVAK][VOICE] Quick question answer:', answer);
+
+      setSevakAnswer(answer);
+      speakAnswer(answer);
+    } catch (error) {
+      console.error(
+        '[SEVAK][VOICE] Quick question pipeline failed:',
+        error
+      );
+
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Question processing failed.';
+
+      setErrorMessage(
+        `SEVAK answer process mein problem aayi: ${message}`
+      );
+      setSevakAnswer('');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
   const handleQuickQuestion = (q: string) => {
     setTranscript(q);
     handleProcessQuestion(q);
@@ -1035,6 +1064,7 @@ const audioContextRef = useRef<any>(null);
     </div>
   );
 };
+
 
 
 

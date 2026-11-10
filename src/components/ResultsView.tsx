@@ -23,6 +23,42 @@ import {
 } from 'lucide-react';
 import { SevakApiService } from '../services/api';
 
+const decodeHtmlEntities = (value: unknown): string => {
+  if (value === null || value === undefined) return '';
+
+  let text = String(value);
+
+  // Decode repeatedly because the backend can return
+  // single- or double-encoded HTML entities.
+  for (let i = 0; i < 3; i += 1) {
+    const before = text;
+
+    // Hexadecimal entities: &#x50; -> P
+    text = text.replace(
+      /&#x([0-9a-f]+);/gi,
+      (_, hex) => String.fromCodePoint(parseInt(hex, 16))
+    );
+
+    // Decimal entities: &#80; -> P
+    text = text.replace(
+      /&#([0-9]+);/g,
+      (_, dec) => String.fromCodePoint(parseInt(dec, 10))
+    );
+
+    // Common named entity needed for double encoding:
+    // &amp;#x50; -> &#x50;
+    text = text
+      .replace(/&amp;/gi, '&')
+      .replace(/&quot;/gi, '"')
+      .replace(/&apos;/gi, "'")
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>');
+
+    if (text === before) break;
+  }
+
+  return text;
+};
 interface ResultsViewProps {
   result: SevakAnalysisResult;
   selectedLanguage: SupportedLanguage;
@@ -223,7 +259,7 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
               <span className="text-[11px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800">
                 {result.category}
               </span>
-              {result.isDemoFallback && (
+              {result.isDemoFallback && !result.originalFileName && (
                 <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-900 border border-amber-200">
                   Demo Analysis Mode
                 </span>
@@ -426,7 +462,7 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
               </div>
               <div>
                 <span className="font-semibold text-slate-500 block">Reference No:</span>
-                <span className="font-mono text-slate-800">{result.source.referenceNumber}</span>
+                <span className="font-mono text-slate-800">{decodeHtmlEntities(result.source.referenceNumber)}</span>
               </div>
             </div>
           </div>
@@ -562,3 +598,9 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
     </div>
   );
 };
+
+
+
+
+
+
