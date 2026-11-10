@@ -20,7 +20,7 @@ export const RobotIllustration: React.FC<RobotIllustrationProps> = ({
       {/* Main Pixel-Accurate Hero Robot Composition */}
       <div className="relative w-full aspect-[845/420] overflow-visible">
         <img
-          src="/public/assets/images/hero_robot_final.png"
+          src="/assets/images/hero_robot_final.png"
           alt="SEVAK AI Robot Assistant holding a legal document with justice scales and sound wave speech bubble"
           className="w-full h-auto object-contain drop-shadow-md pointer-events-none"
           loading="eager"
@@ -57,3 +57,4 @@ export const RobotIllustration: React.FC<RobotIllustrationProps> = ({
     </div>
   );
 };
+
