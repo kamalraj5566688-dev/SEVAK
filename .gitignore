@@ -31,6 +31,7 @@ env/
 Thumbs.db
 *.log
 .aistudio/
+.kilo/
 
 # Local media generation (keep out of GitHub repo)
 brag-output/

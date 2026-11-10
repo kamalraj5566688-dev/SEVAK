@@ -131,7 +131,7 @@ export const SAMPLE_DOCUMENTS: Record<string, SevakAnalysisResult> = {
       issuingAuthority: 'State Bank of India — Retail Banking Operations',
       legalSection: 'RBI Master Direction - KYC Direction, 2016 (Updated 2025)',
       referenceNumber: 'SBI-KYC-RET-498271',
-      officialPortalUrl: 'https://onlinesbi.sbi',
+      officialPortalUrl: 'https://www.onlinesbi.sbi',
     },
     voiceSummaries: {
       hinglish: 'Namaste! SEVAK bol raha hoon. Ye aapke bank ka regular Re-KYC notice hai. Bank ne aapka Aadhaar aur PAN verify karne ko kaha hai. Kisi fake link par click mat kijiye, seedhe branch ya official bank app se 5 December se pehle submit karein.',
@@ -171,7 +171,7 @@ export const SAMPLE_DOCUMENTS: Record<string, SevakAnalysisResult> = {
         step: 1,
         title: 'e-Filing Portal par Notice Check Karein',
         description: 'incometax.gov.in par login karke "Pending Actions > e-Proceedings" tab mein notice open karein.',
-        actionUrl: 'https://incometax.gov.in',
+        actionUrl: 'https://eportal.incometax.gov.in',
       },
       {
         step: 2,

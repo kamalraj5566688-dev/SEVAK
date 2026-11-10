@@ -2,23 +2,23 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
         xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
   <url>
-    <loc>https://sevak.example.com/</loc>
+    <loc>https://kamalraj5566688-dev.github.io/SEVAK/</loc>
     <lastmod>2026-11-09</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
     <image:image>
-      <image:loc>https://sevak.example.com/assets/images/og-sevak.svg</image:loc>
+      <image:loc>https://kamalraj5566688-dev.github.io/SEVAK/assets/images/og-sevak.svg</image:loc>
       <image:title>SEVAK — Voice-First Indian Document Assistant</image:title>
     </image:image>
   </url>
   <url>
-    <loc>https://sevak.example.com/privacy</loc>
+    <loc>https://kamalraj5566688-dev.github.io/SEVAK/privacy</loc>
     <lastmod>2026-11-09</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.5</priority>
   </url>
   <url>
-    <loc>https://sevak.example.com/terms</loc>
+    <loc>https://kamalraj5566688-dev.github.io/SEVAK/terms</loc>
     <lastmod>2026-11-09</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.5</priority>

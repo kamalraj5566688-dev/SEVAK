@@ -32,7 +32,7 @@ export const SafetyCard: React.FC = () => {
         aria-hidden="true"
       >
         <img
-          src="/public/assets/images/tricolor_accent.png"
+          src="/assets/images/tricolor_accent.png"
           alt=""
           className="w-full h-full object-contain object-bottom-right"
         />

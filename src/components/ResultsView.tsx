@@ -22,6 +22,7 @@ import {
   Printer,
 } from 'lucide-react';
 import { SevakApiService } from '../services/api';
+import { sanitizeHtml, sanitizeUrl, validateBase64Audio } from '../utils/security';
 
 const decodeHtmlEntities = (value: unknown): string => {
   if (value === null || value === undefined) return '';
@@ -58,6 +59,34 @@ const decodeHtmlEntities = (value: unknown): string => {
   }
 
   return text;
+};
+
+/**
+ * Sanitize document-derived prose for safe UI rendering.
+ *
+ * - Decodes HTML entities (single / double / triple encoded) so reference
+ *   numbers and extracted text never leak `&#x50;`-style entities.
+ * - Strips PDF text-extraction artifacts such as `(cid:127)`.
+ * - Collapses whitespace and trims so the output is concise and clean.
+ */
+const sanitizeProse = (value: unknown): string => {
+  if (value === null || value === undefined) return '';
+
+  let text = decodeHtmlEntities(value);
+
+  // Remove PDF cid glyph artifacts (e.g. "(cid:127)") left by text extraction.
+  text = text.replace(/\(cid:\d+\)/g, ' ');
+
+  // Collapse whitespace and trim.
+  text = text.replace(/\s+/g, ' ').trim();
+
+  return text;
+};
+
+/** Strip PDF cid glyph artifacts (e.g. "(cid:10)", "(cid:127)") from display text. */
+const stripCids = (value: unknown): string => {
+  if (value === null || value === undefined) return '';
+  return String(value).replace(/\(cid:\d+\)/g, ' ').replace(/\s+/g, ' ').trim();
 };
 interface ResultsViewProps {
   result: SevakAnalysisResult;
@@ -135,27 +164,68 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
       return;
     }
 
-    // 1. Prefer real Gnani Timbre neural audio if available
-    if (result.audioBase64) {
+    let settled = false;
+    const markSettled = () => {
+      if (settled) return;
+      settled = true;
+    };
+
+    // 1. Prefer real Gnani Timbre neural audio if available.
+    const safeAudioBase64 = validateBase64Audio(result.audioBase64);
+    if (safeAudioBase64) {
       try {
         if (!audioRef.current) {
           audioRef.current = new Audio();
         }
-        audioRef.current.src = `data:audio/wav;base64,${result.audioBase64}`;
+        audioRef.current.src = `data:audio/wav;base64,${safeAudioBase64}`;
+
+        const attemptNeuralPlay = () => {
+          markSettled();
+          // When Gnani Timbre is unavailable it returns ~1 second of silence.
+          // Treat anything at/below that length as the silent fallback and use
+          // browser speech synthesis instead so the Voice Summary is audible.
+          const dur = audioRef.current.duration;
+          if (dur && dur > 0 && dur <= 1.1) {
+            playBrowserSpeech();
+            return;
+          }
+          audioRef.current.play().catch(() => playBrowserSpeech());
+        };
+
+        if (audioRef.current.readyState >= 1) {
+          attemptNeuralPlay();
+        } else {
+          audioRef.current.addEventListener(
+            'loadedmetadata',
+            attemptNeuralPlay,
+            { once: true }
+          );
+        }
+
+        // Safety net: if neural audio never becomes playable, fall back.
+        window.setTimeout(() => {
+          if (!settled) {
+            markSettled();
+            playBrowserSpeech();
+          }
+        }, 1500);
+
         audioRef.current.onplay = () => setIsPlayingAudio(true);
         audioRef.current.onended = () => setIsPlayingAudio(false);
         audioRef.current.onerror = () => {
           setIsPlayingAudio(false);
           playBrowserSpeech();
         };
-        audioRef.current.play();
         return;
       } catch (err) {
-        console.warn('Direct Timbre playback failed, falling back to speech synthesis:', err);
+        console.warn(
+          'Direct Timbre playback failed, falling back to speech synthesis:',
+          err
+        );
       }
     }
 
-    // 2. Fall back to browser Web Speech API
+    // 2. Fall back to browser Web Speech API.
     playBrowserSpeech();
   };
 
@@ -257,7 +327,7 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
           <div>
             <div className="flex flex-wrap items-center gap-2 mb-2">
               <span className="text-[11px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800">
-                {result.category}
+                {sanitizeHtml(result.category)}
               </span>
               {result.isDemoFallback && !result.originalFileName && (
                 <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-900 border border-amber-200">
@@ -266,12 +336,12 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
               )}
             </div>
 
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#082C5A] tracking-tight font-display">
-              {result.documentTitle}
-            </h1>
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-[#082C5A] tracking-tight font-display">
+                {sanitizeHtml(result.documentTitle)}
+              </h1>
 
             <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-              <span>File: {result.originalFileName}</span>
+              <span>File: {sanitizeHtml(result.originalFileName)}</span>
               <span>•</span>
               <span>Size: {result.fileSize}</span>
               <span>•</span>
@@ -289,12 +359,14 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
                 <span className="text-[11px] font-extrabold text-red-700 uppercase tracking-wider block">
                   IMPORTANT DEADLINE
                 </span>
-                <span className="text-sm sm:text-base font-extrabold text-slate-900 font-display">
-                  {result.deadline.date}
-                </span>
+                  <span className="text-sm sm:text-base font-extrabold text-slate-900 font-display">
+                    {sanitizeHtml(result.deadline.date)}
+                  </span>
                 {result.deadline.daysRemaining !== undefined && (
                   <span className="text-xs text-red-700 block font-semibold">
-                    ({result.deadline.daysRemaining} days remaining)
+                    {result.deadline.daysRemaining! < 0
+                      ? `⚠️ EXPIRED (${Math.abs(result.deadline.daysRemaining)} days overdue)`
+                      : `(${result.deadline.daysRemaining} days remaining)`}
                   </span>
                 )}
               </div>
@@ -341,11 +413,13 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
               </h2>
             </div>
             <p className="text-base sm:text-lg font-bold text-slate-900 leading-snug font-display mb-2">
-              {result.what.summary}
+              {sanitizeProse(result.what.summary)}
             </p>
-            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-              {result.what.details}
-            </p>
+            {sanitizeProse(result.what.details) && (
+              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                {sanitizeProse(result.what.details)}
+              </p>
+            )}
           </div>
         </div>
 
@@ -361,10 +435,10 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
               </h2>
             </div>
             <p className="text-base sm:text-lg font-bold text-slate-900 leading-snug font-display mb-2">
-              {result.why.significance}
+              {sanitizeHtml(result.why.significance)}
             </p>
             <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-              {result.why.urgencyReason}
+              {sanitizeHtml(result.why.urgencyReason)}
             </p>
           </div>
         </div>
@@ -391,18 +465,18 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
                     0{item.step}
                   </div>
                   <h4 className="text-sm font-bold text-slate-900 mb-1.5 font-display">
-                    {item.title}
+                    {sanitizeHtml(item.title)}
                   </h4>
                   <p className="text-xs text-slate-600 leading-relaxed">
-                    {item.description}
+                    {sanitizeHtml(item.description)}
                   </p>
                 </div>
 
-                {item.actionUrl && (
+                {item.actionUrl && sanitizeUrl(item.actionUrl) && (
                   <a
-                    href={item.actionUrl}
+                    href={sanitizeUrl(item.actionUrl)!}
                     target="_blank"
-                    rel="noreferrer"
+                    rel="noopener noreferrer"
                     className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-[#0B57D0] hover:underline"
                   >
                     <span>Official portal link</span>
@@ -429,13 +503,13 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
             {result.rights.safeguards.map((item, i) => (
               <li key={i} className="flex items-start gap-2 text-xs sm:text-sm text-slate-700">
                 <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                <span>{item}</span>
+                <span>{sanitizeHtml(item)}</span>
               </li>
             ))}
           </ul>
 
           <div className="p-3 bg-amber-50/80 rounded-xl border border-amber-200/70 text-[11px] text-amber-900 leading-tight">
-            <strong>Advisory Note:</strong> {result.rights.disclaimer}
+            <strong>Advisory Note:</strong> {sanitizeHtml(result.rights.disclaimer)}
           </div>
         </div>
 
@@ -454,26 +528,26 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
             <div className="space-y-2.5 text-xs text-slate-700">
               <div>
                 <span className="font-semibold text-slate-500 block">Authority:</span>
-                <span className="text-slate-900 font-bold">{result.source.issuingAuthority}</span>
+                <span className="text-slate-900 font-bold">{sanitizeHtml(result.source.issuingAuthority)}</span>
               </div>
               <div>
                 <span className="font-semibold text-slate-500 block">Legal Section:</span>
-                <span className="text-blue-900 font-medium">{result.source.legalSection}</span>
+                <span className="text-blue-900 font-medium">{sanitizeHtml(result.source.legalSection)}</span>
               </div>
               <div>
                 <span className="font-semibold text-slate-500 block">Reference No:</span>
-                <span className="font-mono text-slate-800">{decodeHtmlEntities(result.source.referenceNumber)}</span>
+                <span className="font-mono text-slate-800">{sanitizeHtml(decodeHtmlEntities(result.source.referenceNumber))}</span>
               </div>
             </div>
           </div>
 
-          {result.source.officialPortalUrl && (
+          {result.source.officialPortalUrl && sanitizeUrl(result.source.officialPortalUrl) && (
             <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
               <span className="text-xs text-slate-500">Official Portal:</span>
               <a
-                href={result.source.officialPortalUrl}
+                href={sanitizeUrl(result.source.officialPortalUrl)!}
                 target="_blank"
-                rel="noreferrer"
+                rel="noopener noreferrer"
                 className="text-xs font-semibold text-[#0B57D0] hover:underline flex items-center gap-1"
               >
                 <span>Visit Official Site</span>
@@ -507,11 +581,11 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
                   className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 flex flex-col justify-between"
                 >
                   <p className="text-xs sm:text-sm font-medium text-slate-800 mb-2.5">
-                    "{cite.claim}"
+                    "{sanitizeHtml(cite.claim)}"
                   </p>
                   <div className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#0B57D0] bg-blue-50 px-2.5 py-1 rounded-full w-fit">
                     <ExternalLink className="w-3 h-3" />
-                    <span>Verified Source: {cite.sourceLocation}</span>
+                    <span>Verified Source: {sanitizeHtml(cite.sourceLocation)}</span>
                   </div>
                 </div>
               ))}
@@ -553,7 +627,7 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
                 <span className="font-bold block text-[11px] opacity-75 mb-0.5">
                   {msg.role === 'user' ? 'You' : 'SEVAK'}:
                 </span>
-                {msg.text}
+                {sanitizeHtml(stripCids(msg.text))}
               </div>
             ))}
           </div>
@@ -570,7 +644,7 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
             aria-hidden="true"
             className="sr-only"
           />
-          <label className="sr-only">
+          <label className="sr-only" aria-hidden="true">
             If you are human, leave this field blank.
           </label>
           <input

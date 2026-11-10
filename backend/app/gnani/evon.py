@@ -390,6 +390,16 @@ class EvonReasoningClient:
         """
         chat_url = self.get_chat_url()
 
+        # Fast-fail: if Evon endpoint is not configured at all, do not
+        # attempt any HTTP request to the HuggingFace router. This avoids
+        # 400 errors from unsupported 30B MoE models and routes directly
+        # to the deterministic Indic legal fallback engine.
+        if not settings.HF_EVON_ENDPOINT and not settings.HF_MODEL_ID:
+            logger.debug(
+                "Evon endpoint not configured; using safe fallback."
+            )
+            return EvonAnalysisResult(**DEMO_RESULT)
+
         if not self.api_token or not chat_url:
             logger.info("Evon credentials unavailable; using safe fallback.")
             return EvonAnalysisResult(**DEMO_RESULT)
@@ -460,6 +470,14 @@ class EvonReasoningClient:
         .lower() / pass it directly to _clean_grounded_text().
         """
         chat_url = self.get_chat_url()
+
+        # Fast-fail: if Evon endpoint is not configured at all, do not
+        # attempt any HTTP request to the HuggingFace router.
+        if not settings.HF_EVON_ENDPOINT and not settings.HF_MODEL_ID:
+            logger.debug(
+                "Evon endpoint not configured; using safe fallback."
+            )
+            return self._demo_answer(question, language)["answer"]
 
         if not self.api_token or not chat_url:
             return self._demo_answer(question, language)["answer"]
